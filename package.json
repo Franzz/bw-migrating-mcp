@@ -1,0 +1,13 @@
+{
+  "name": "bw-migrating-mcp",
+  "private": true,
+  "description": "bw launcher for the bw-modeling-mcp server (SAP BW S4H)",
+  "type": "module",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "start": "node start-bw-mcp.mjs"
+  }
+}
