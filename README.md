@@ -7,13 +7,19 @@ Access is read-only, and the server certificate is checked against the BW root C
 
 ## Setup
 
-1. **BW MCP Server**
-
-   Run the build. It clones the `bw-migration` branch of [Franzz/bw-modeling-mcp](https://github.com/Franzz/bw-modeling-mcp) into `../bw-modeling-mcp` (next to this folder), or updates that checkout if it exists, then installs and builds it.
+1. **MCP servers:** run the build. It asks for the migration source and target, sets up their MCP servers and writes `.mcp.json` (not tracked in git).
 
    ```bash
    npm run build
    ```
+
+   | Question | Choices | MCP server |
+   |---|---|---|
+   | Migration source | SAP BW | `bw-mcp`: the build clones the `bw-migration` branch of [Franzz/bw-modeling-mcp](https://github.com/Franzz/bw-modeling-mcp) into `modeling-mcp/bw` (or updates that checkout), then installs and builds it |
+   | Migration target | Microsoft Fabric | `fabric-mcp`: Microsoft's official Fabric MCP server, as declared in `modeling-mcp/fabric/.mcp.json` |
+   | | Snowflake, Databricks, Google BigQuery | none yet: nothing is added to `.mcp.json` |
+
+   Press Enter to keep the current choice. Without a terminal, or with `npm run build -- --yes`, the current choices are kept without asking. Servers you add to `.mcp.json` by hand are kept.
 
 2. **Connection details:** copy `.destination.properties` from the Eclipse ADT/BWMT project of the system. Eclipse writes it when the project is created, at:
 
@@ -23,15 +29,15 @@ Access is read-only, and the server certificate is checked against the BW root C
 
 3. **Credentials:** copy `credentials.example.ini` to `credentials.ini` and fill in your SAP user and password. Keep it private (`chmod 600 credentials.ini`).
 
-4. **Agents:** The agent opens this folder (tested with Claude Code), approve the `bw-mcp` server when asked, and check it with `/mcp`.
+4. **Agents:** The agent opens this folder (tested with Claude Code). Approve the servers when asked and check them with `/mcp`. After a new build, restart the agent (in VS Code: **Developer: Reload Window**) so it loads the new `.mcp.json`.
 
 ## Options
 
-Set these under `env` in `.mcp.json`. Variables set there win over the files.
+Set these under `env` of `bw-mcp` in `.mcp.json`. Variables set there win over the files, and a new build keeps them.
 
 | Variable | Default | Effect |
 |---|---|---|
 | `BW_STDIO_SCOPES` | `read` | `write` also offers the tools that create, change, activate or delete objects |
-| `BW_MCP_DIR` | `../bw-modeling-mcp` | Folder of the built server (also read by `npm run build`) |
+| `BW_MCP_DIR` | `modeling-mcp/bw` | Folder of the built server (also read by `npm run build`) |
 | `BW_CA_FILE` | `rootca.pem` | CA bundle used to verify the server certificate |
 | `BW_URL`, `BW_CLIENT`, `BW_LANGUAGE` | from `.destination.properties` | Override the connection details |

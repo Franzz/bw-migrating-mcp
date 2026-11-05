@@ -1,3 +1,9 @@
 credentials.ini
 .destination.properties
 rootca.pem
+
+# Own git repos, not part of this one
+modeling-mcp/*
+
+# Dynamic build
+.mcp.json

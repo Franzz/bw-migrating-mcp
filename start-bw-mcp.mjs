@@ -3,7 +3,7 @@
 // credentials.ini (both next to this file), then starts the bw-modeling-mcp stdio server.
 // Variables already set in the environment win.
 //
-//   BW_MCP_DIR            bw-modeling-mcp checkout (default: ../bw-modeling-mcp, as built by npm run build)
+//   BW_MCP_DIR            bw-modeling-mcp checkout (default: modeling-mcp/bw, as built by npm run build)
 //   BW_ECLIPSE_PROJECT    Eclipse project, used only when .destination.properties is missing
 //                         here (default: S4H_100_flutran_en)
 //   BW_ECLIPSE_WORKSPACE  Eclipse workspace folder (default: ~/eclipse-workspace)
@@ -62,7 +62,7 @@ if (!env.BW_CA_FILE && fs.existsSync(ca)) env.BW_CA_FILE = ca;
 
 if (!env.BW_USER || !env.BW_PASSWORD) fail(`BW user or password missing (set them in ${credFile})`);
 
-const serverDir = env.BW_MCP_DIR || path.join(here, '..', 'bw-modeling-mcp');
+const serverDir = env.BW_MCP_DIR || path.join(here, 'modeling-mcp', 'bw');
 const entry = path.join(serverDir, 'dist/stdio.js');
 if (!fs.existsSync(entry)) fail(`${entry} not found (run npm run build in ${here})`);
 await import(pathToFileURL(entry).href);
