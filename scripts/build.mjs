@@ -4,8 +4,9 @@
 // Asks for the migration source and the migration target, prepares the MCP server of each
 // and writes them into .mcp.json, the only MCP file Claude Code reads here:
 //   source SAP BW            bw-mcp: fetches bw-modeling-mcp into modeling-mcp/bw and builds it
-//   target Microsoft Fabric  fabric-mcp: runs the Fabric build modeling-mcp/fabric/build.mjs, which
-//                            installs Microsoft's official Fabric MCP server and its sign-in
+//   target Microsoft Fabric  fabric-mcp: fetches fabric-modeling-mcp into modeling-mcp/fabric and runs
+//                            its build.mjs, which installs Microsoft's official Fabric MCP server and
+//                            its sign-in
 //   target Snowflake, Databricks, Google BigQuery
 //                            offered, but no MCP server yet: nothing is added for them
 // Servers added to .mcp.json by hand are kept.
@@ -13,12 +14,15 @@
 // The current .mcp.json gives the default answers. Without a terminal (CI, piped input) or
 // with --yes, the defaults are used without asking.
 //
-//   BW_MCP_DIR     checkout folder        (default: modeling-mcp/bw, inside this project)
-//   BW_MCP_REPO    git URL to clone from  (default: https://github.com/Franzz/bw-modeling-mcp.git)
-//   BW_MCP_BRANCH  branch to check out    (default: bw-migration)
+//   BW_MCP_DIR         checkout folder        (default: modeling-mcp/bw, inside this project)
+//   BW_MCP_REPO        git URL to clone from  (default: https://github.com/Franzz/bw-modeling-mcp.git)
+//   BW_MCP_BRANCH      branch to check out    (default: bw-migration)
+//   FABRIC_MCP_DIR     checkout folder        (default: modeling-mcp/fabric, inside this project)
+//   FABRIC_MCP_REPO    git URL to clone from  (default: https://github.com/Franzz/fabric-modeling-mcp.git)
+//   FABRIC_MCP_BRANCH  branch to check out    (default: main)
 //
-// First run: clones the branch. Later runs: fetches, switches to the branch and fast-forwards it.
-// Local commits or uncommitted changes in the checkout are never discarded: git stops instead.
+// For each checkout, first run: clones the branch. Later runs: fetches, switches to the branch and
+// fast-forwards it. Local commits or uncommitted changes in a checkout are never discarded: git stops instead.
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -26,22 +30,30 @@ import readline from 'node:readline/promises';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const dir = path.resolve(process.env.BW_MCP_DIR || path.join(root, 'modeling-mcp', 'bw'));
-const repo = process.env.BW_MCP_REPO || 'https://github.com/Franzz/bw-modeling-mcp.git';
-const branch = process.env.BW_MCP_BRANCH || 'bw-migration';
 const mcpFile = path.join(root, '.mcp.json');
+
+/** The git checkout of an MCP server: folder, repository and branch, each overridable. */
+function checkout(prefix, folder, repo, branch) {
+  return {
+    dir: path.resolve(process.env[`${prefix}_DIR`] || path.join(root, 'modeling-mcp', folder)),
+    repo: process.env[`${prefix}_REPO`] || repo,
+    branch: process.env[`${prefix}_BRANCH`] || branch,
+  };
+}
+const bwCheckout = checkout('BW_MCP', 'bw', 'https://github.com/Franzz/bw-modeling-mcp.git', 'bw-migration');
+const fabricCheckout = checkout('FABRIC_MCP', 'fabric', 'https://github.com/Franzz/fabric-modeling-mcp.git', 'main');
 
 function log(message) {
   process.stdout.write(`[build] ${message}\n`);
 }
 
-function run(cmd, args, cwd = dir) {
+function run(cwd, cmd, args) {
   log(`${path.basename(cwd)}$ ${cmd} ${args.join(' ')}`);
   execFileSync(cmd, args, { cwd, stdio: 'inherit', shell: process.platform === 'win32' });
 }
 
-function git(...args) {
-  return execFileSync('git', args, { cwd: dir, encoding: 'utf8' }).trim();
+function git(cwd, ...args) {
+  return execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
 }
 
 function readServers(file) {
@@ -53,31 +65,47 @@ function readServers(file) {
   }
 }
 
-function buildBwServer() {
+/** Clones the branch into dir, or fetches, switches to it and fast-forwards it. */
+function syncCheckout({ dir, repo, branch }) {
   if (!fs.existsSync(path.join(dir, '.git'))) {
     fs.mkdirSync(path.dirname(dir), { recursive: true });
-    run('git', ['clone', '--branch', branch, repo, dir], path.dirname(dir));
+    run(path.dirname(dir), 'git', ['clone', '--branch', branch, repo, dir]);
   } else {
     // Use whichever remote points at the repo; fall back to origin.
-    const remote = git('remote').split('\n')
-      .find((r) => git('remote', 'get-url', r).replace(/\.git$/, '') === repo.replace(/\.git$/, '')) || 'origin';
-    run('git', ['fetch', remote, branch]);
-    const hasLocal = git('branch', '--list', branch) !== '';
-    run('git', hasLocal ? ['switch', branch] : ['switch', '-c', branch, '--track', `${remote}/${branch}`]);
-    run('git', ['merge', '--ff-only', `${remote}/${branch}`]);
+    const remote = git(dir, 'remote').split('\n')
+      .find((r) => git(dir, 'remote', 'get-url', r).replace(/\.git$/, '') === repo.replace(/\.git$/, '')) || 'origin';
+    run(dir, 'git', ['fetch', remote, branch]);
+    const hasLocal = git(dir, 'branch', '--list', branch) !== '';
+    run(dir, 'git', hasLocal ? ['switch', branch] : ['switch', '-c', branch, '--track', `${remote}/${branch}`]);
+    run(dir, 'git', ['merge', '--ff-only', `${remote}/${branch}`]);
   }
   // Deleted files do not stop git from switching or fast-forwarding, so a checkout whose
   // working tree was emptied gets this far: stop before npm runs in an empty folder.
   if (!fs.existsSync(path.join(dir, 'package.json'))) {
-    const deleted = git('ls-files', '--deleted').split('\n').filter(Boolean).length;
+    const deleted = git(dir, 'ls-files', '--deleted').split('\n').filter(Boolean).length;
     throw new Error(`${dir} has no package.json` + (deleted
       ? ` (${deleted} tracked files deleted from the working tree). Restore them with`
         + ` "git -C ${dir} restore ." or delete the folder for a fresh clone.`
       : '. Delete the folder for a fresh clone.'));
   }
-  run('npm', [fs.existsSync(path.join(dir, 'package-lock.json')) ? 'ci' : 'install']);
-  run('npm', ['run', 'build']);
+}
+
+function buildBwServer() {
+  const { dir, branch } = bwCheckout;
+  syncCheckout(bwCheckout);
+  run(dir, 'npm', [fs.existsSync(path.join(dir, 'package-lock.json')) ? 'ci' : 'install']);
+  run(dir, 'npm', ['run', 'build']);
   log(`BW MCP server built: ${path.join(dir, 'dist/stdio.js')} (branch ${branch})`);
+}
+
+/** Fetches fabric-modeling-mcp, then runs its own build, which returns the .mcp.json entries. */
+async function buildFabricServer({ interactive }) {
+  const { dir, branch } = fabricCheckout;
+  syncCheckout(fabricCheckout);
+  const fabricBuild = path.join(dir, 'build.mjs');
+  if (!fs.existsSync(fabricBuild)) throw new Error(`${fabricBuild} not found (branch ${branch})`);
+  log(`Fabric MCP checkout ready: ${dir} (branch ${branch})`);
+  return (await import(pathToFileURL(fabricBuild).href)).build({ interactive });
 }
 
 // Systems a migration can read from (sources) and write to (targets).
@@ -103,13 +131,11 @@ const SOURCES = [
   },
 ];
 
-const fabricBuild = path.join(root, 'modeling-mcp', 'fabric', 'build.mjs');
 const TARGETS = [
   {
     label: 'Microsoft Fabric',
     names: ['fabric-mcp'],
-    missing: fs.existsSync(fabricBuild) ? null : `${path.relative(root, fabricBuild)} not found`,
-    setup: async ({ interactive }) => (await import(pathToFileURL(fabricBuild).href)).build({ interactive }),
+    setup: buildFabricServer,
   },
   // Offered, but nothing to set up yet.
   ...['Snowflake', 'Databricks', 'Google BigQuery'].map((label) => ({ label, names: [] })),
@@ -121,8 +147,7 @@ function createPrompter(interactive) {
   return {
     /** Numbered list of the systems; returns the chosen one. */
     async pick(question, systems, fallback) {
-      const options = systems.map((s) => s.label
-        + (s.missing ? ` (unavailable: ${s.missing})` : s.setup ? '' : ' (no MCP server yet)'));
+      const options = systems.map((s) => s.label + (s.setup ? '' : ' (no MCP server yet)'));
       const fallbackIndex = systems.indexOf(fallback);
       if (!rl) {
         log(`${question} ${fallback.label} (default)`);
@@ -133,8 +158,8 @@ function createPrompter(interactive) {
         const answer = (await rl.question(`Choice [${fallbackIndex + 1}]: `)).trim();
         if (!answer) return fallback;
         const system = systems[Number(answer) - 1];
-        if (system && !system.missing) return system;
-        process.stdout.write(system ? `${system.label} is unavailable: ${system.missing}\n` : `Type a number from 1 to ${options.length}.\n`);
+        if (system) return system;
+        process.stdout.write(`Type a number from 1 to ${options.length}.\n`);
       }
     },
     close() { rl?.close(); },
@@ -145,10 +170,8 @@ const interactive = Boolean(process.stdin.isTTY && process.stdout.isTTY) && !pro
 const prompt = createPrompter(interactive);
 try {
   const current = readServers(mcpFile);
-  // Default: the system already in .mcp.json, otherwise the first available one.
-  const defaultOf = (systems) => systems.find((s) => !s.missing && s.names.some((n) => n in current))
-    ?? systems.find((s) => !s.missing);
-  if (!defaultOf(TARGETS)) throw new Error(`No migration target available (${TARGETS[0].missing})`);
+  // Default: the system already in .mcp.json, otherwise the first one.
+  const defaultOf = (systems) => systems.find((s) => s.names.some((n) => n in current)) ?? systems[0];
 
   // Questions first, so the build runs unattended afterwards.
   const source = await prompt.pick('Migration source?', SOURCES, defaultOf(SOURCES));
