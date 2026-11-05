@@ -4,8 +4,8 @@
 // Asks for the migration source and the migration target, prepares the MCP server of each
 // and writes them into .mcp.json, the only MCP file Claude Code reads here:
 //   source SAP BW            bw-mcp: fetches bw-modeling-mcp into modeling-mcp/bw and builds it
-//   target Microsoft Fabric  the servers declared in modeling-mcp/fabric/.mcp.json
-//                            (Microsoft's official Fabric MCP server)
+//   target Microsoft Fabric  fabric-mcp: runs the Fabric build modeling-mcp/fabric/build.mjs, which
+//                            installs Microsoft's official Fabric MCP server and its sign-in
 //   target Snowflake, Databricks, Google BigQuery
 //                            offered, but no MCP server yet: nothing is added for them
 // Servers added to .mcp.json by hand are kept.
@@ -23,7 +23,7 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import readline from 'node:readline/promises';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const dir = path.resolve(process.env.BW_MCP_DIR || path.join(root, 'modeling-mcp', 'bw'));
@@ -81,47 +81,48 @@ function buildBwServer() {
 }
 
 // Systems a migration can read from (sources) and write to (targets).
-// servers(current) returns the .mcp.json entries of the system; names lists the entries it owns.
+// setup({ current, interactive }) prepares the system and returns its .mcp.json entries;
+// names lists the entries it owns.
 // A system without servers is offered but adds nothing to .mcp.json yet.
 const SOURCES = [
   {
     label: 'SAP BW',
     names: ['bw-mcp'],
-    setup: buildBwServer,
-    servers: (current) => ({
-      'bw-mcp': {
-        type: 'stdio',
-        command: 'node',
-        args: [path.join(root, 'start-bw-mcp.mjs')],
-        // Keeps env set by hand; BW access is read-only unless changed there.
-        env: { BW_STDIO_SCOPES: 'read', ...current['bw-mcp']?.env },
-      },
-    }),
+    setup: ({ current }) => {
+      buildBwServer();
+      return {
+        'bw-mcp': {
+          type: 'stdio',
+          command: 'node',
+          args: [path.join(root, 'start-bw-mcp.mjs')],
+          // Keeps env set by hand; BW access is read-only unless changed there.
+          env: { BW_STDIO_SCOPES: 'read', ...current['bw-mcp']?.env },
+        },
+      };
+    },
   },
 ];
 
-const fabricFile = path.join(root, 'modeling-mcp', 'fabric', '.mcp.json');
-const fabricServers = readServers(fabricFile);
+const fabricBuild = path.join(root, 'modeling-mcp', 'fabric', 'build.mjs');
 const TARGETS = [
   {
     label: 'Microsoft Fabric',
-    names: Object.keys(fabricServers),
-    missing: Object.keys(fabricServers).length ? null : `${path.relative(root, fabricFile)} not found or empty`,
-    setup: () => {},
-    servers: () => fabricServers,
+    names: ['fabric-mcp'],
+    missing: fs.existsSync(fabricBuild) ? null : `${path.relative(root, fabricBuild)} not found`,
+    setup: async ({ interactive }) => (await import(pathToFileURL(fabricBuild).href)).build({ interactive }),
   },
+  // Offered, but nothing to set up yet.
   ...['Snowflake', 'Databricks', 'Google BigQuery'].map((label) => ({ label, names: [] })),
 ];
 
 /** Asks on a terminal; otherwise answers with the default. */
-function createPrompter() {
-  const interactive = process.stdin.isTTY && process.stdout.isTTY && !process.argv.includes('--yes');
+function createPrompter(interactive) {
   const rl = interactive ? readline.createInterface({ input: process.stdin, output: process.stdout }) : null;
   return {
     /** Numbered list of the systems; returns the chosen one. */
     async pick(question, systems, fallback) {
       const options = systems.map((s) => s.label
-        + (s.missing ? ` (unavailable: ${s.missing})` : s.servers ? '' : ' (no MCP server yet)'));
+        + (s.missing ? ` (unavailable: ${s.missing})` : s.setup ? '' : ' (no MCP server yet)'));
       const fallbackIndex = systems.indexOf(fallback);
       if (!rl) {
         log(`${question} ${fallback.label} (default)`);
@@ -140,7 +141,8 @@ function createPrompter() {
   };
 }
 
-const prompt = createPrompter();
+const interactive = Boolean(process.stdin.isTTY && process.stdout.isTTY) && !process.argv.includes('--yes');
+const prompt = createPrompter(interactive);
 try {
   const current = readServers(mcpFile);
   // Default: the system already in .mcp.json, otherwise the first available one.
@@ -154,15 +156,16 @@ try {
   prompt.close();
 
   const chosen = [source, target].filter((system) => {
-    if (!system.servers) log(`${system.label}: no MCP server yet, nothing added to .mcp.json`);
-    return system.servers;
+    if (!system.setup) log(`${system.label}: no MCP server yet, nothing added to .mcp.json`);
+    return system.setup;
   });
-  for (const system of chosen) system.setup();
+  const added = {};
+  for (const system of chosen) Object.assign(added, await system.setup({ current, interactive }));
 
   // Keep the servers added by hand, replace the ones this script manages.
   const servers = { ...current };
   for (const system of [...SOURCES, ...TARGETS]) for (const name of system.names) delete servers[name];
-  for (const system of chosen) Object.assign(servers, system.servers(current));
+  Object.assign(servers, added);
 
   fs.writeFileSync(mcpFile, `${JSON.stringify({ mcpServers: servers }, null, 2)}\n`);
   const names = Object.keys(servers);

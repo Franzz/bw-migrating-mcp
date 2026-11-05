@@ -16,7 +16,7 @@ Access is read-only, and the server certificate is checked against the BW root C
    | Question | Choices | MCP server |
    |---|---|---|
    | Migration source | SAP BW | `bw-mcp`: the build clones the `bw-migration` branch of [Franzz/bw-modeling-mcp](https://github.com/Franzz/bw-modeling-mcp) into `modeling-mcp/bw` (or updates that checkout), then installs and builds it |
-   | Migration target | Microsoft Fabric | `fabric-mcp`: Microsoft's official Fabric MCP server, as declared in `modeling-mcp/fabric/.mcp.json` |
+   | Migration target | Microsoft Fabric | `fabric-mcp`: Microsoft's official Fabric MCP server. The Fabric build `modeling-mcp/fabric/build.mjs` installs it and sets up the Microsoft sign-in (VS Code's sign-in in a VS Code terminal, otherwise the Azure CLI in `modeling-mcp/fabric/.venv`), see [modeling-mcp/fabric/README.md](modeling-mcp/fabric/README.md) |
    | | Snowflake, Databricks, Google BigQuery | none yet: nothing is added to `.mcp.json` |
 
    Press Enter to keep the current choice. Without a terminal, or with `npm run build -- --yes`, the current choices are kept without asking. Servers you add to `.mcp.json` by hand are kept.
