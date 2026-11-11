@@ -3,7 +3,11 @@ credentials.ini
 rootca.pem
 
 # Own git repos, not part of this one
+# Includes modeling-mcp/datasphere/, maintained as an independent repo.
 modeling-mcp/*
 
 # Dynamic build
 .mcp.json
+
+# Local migration snapshots and deployment artifacts
+.migration-work/

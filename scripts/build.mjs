@@ -7,6 +7,7 @@
 //   target Microsoft Fabric  fabric-mcp: fetches fabric-modeling-mcp into modeling-mcp/fabric and runs
 //                            its build.mjs, which installs Microsoft's official Fabric MCP server and
 //                            its sign-in
+//   target SAP Datasphere    datasphere-mcp: runs the independent modeling-mcp/datasphere build
 //   target Snowflake, Databricks, Google BigQuery
 //                            offered, but no MCP server yet: nothing is added for them
 // Servers added to .mcp.json by hand are kept.
@@ -20,6 +21,9 @@
 //   FABRIC_MCP_DIR     checkout folder        (default: modeling-mcp/fabric, inside this project)
 //   FABRIC_MCP_REPO    git URL to clone from  (default: https://github.com/Franzz/fabric-modeling-mcp.git)
 //   FABRIC_MCP_BRANCH  branch to check out    (default: main)
+//   DATASPHERE_MCP_DIR checkout folder        (default: modeling-mcp/datasphere)
+//   DATASPHERE_MCP_REPO optional git URL      (unset: use the existing independent local repo)
+//   DATASPHERE_MCP_BRANCH branch to check out (default: main; used only with DATASPHERE_MCP_REPO)
 //
 // For each checkout, first run: clones the branch. Later runs: fetches, switches to the branch and
 // fast-forwards it. Local commits or uncommitted changes in a checkout are never discarded: git stops instead.
@@ -42,6 +46,7 @@ function checkout(prefix, folder, repo, branch) {
 }
 const bwCheckout = checkout('BW_MCP', 'bw', 'https://github.com/Franzz/bw-modeling-mcp.git', 'bw-migration');
 const fabricCheckout = checkout('FABRIC_MCP', 'fabric', 'https://github.com/Franzz/fabric-modeling-mcp.git', 'main');
+const datasphereCheckout = checkout('DATASPHERE_MCP', 'datasphere', undefined, 'main');
 
 function log(message) {
   process.stdout.write(`[build] ${message}\n`);
@@ -108,6 +113,18 @@ async function buildFabricServer({ interactive }) {
   return (await import(pathToFileURL(fabricBuild).href)).build({ interactive });
 }
 
+/** The Datasphere repo can be developed locally before a remote has been published. */
+async function buildDatasphereServer(options) {
+  const { dir, repo } = datasphereCheckout;
+  if (repo) syncCheckout(datasphereCheckout);
+  const entry = path.join(dir, 'build.mjs');
+  if (!fs.existsSync(entry)) {
+    throw new Error(`${entry} not found. Prepare the independent Datasphere repo there, or set DATASPHERE_MCP_REPO to clone it.`);
+  }
+  log(`Datasphere MCP checkout ready: ${dir}`);
+  return (await import(pathToFileURL(entry).href)).build(options);
+}
+
 // Systems a migration can read from (sources) and write to (targets).
 // setup({ current, interactive }) prepares the system and returns its .mcp.json entries;
 // names lists the entries it owns.
@@ -136,6 +153,11 @@ const TARGETS = [
     label: 'Microsoft Fabric',
     names: ['fabric-mcp'],
     setup: buildFabricServer,
+  },
+  {
+    label: 'SAP Datasphere',
+    names: ['datasphere-mcp'],
+    setup: buildDatasphereServer,
   },
   // Offered, but nothing to set up yet.
   ...['Snowflake', 'Databricks', 'Google BigQuery'].map((label) => ({ label, names: [] })),

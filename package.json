@@ -8,6 +8,7 @@
   },
   "scripts": {
     "build": "node scripts/build.mjs",
-    "start": "node start-bw-mcp.mjs"
+    "start": "node start-bw-mcp.mjs",
+    "test": "node --test test/*.test.mjs"
   }
 }
