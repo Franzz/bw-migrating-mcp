@@ -11,3 +11,4 @@ modeling-mcp/*
 
 # Local migration snapshots and deployment artifacts
 .migration-work/
+migrations/
