@@ -18,11 +18,15 @@ Access is read-only, and the server certificate is checked against the BW root C
    | Migration source | SAP BW | `bw-mcp`: the build clones the `bw-migration` branch of [Franzz/bw-modeling-mcp](https://github.com/Franzz/bw-modeling-mcp) into `modeling-mcp/bw` (or updates that checkout), then installs and builds it |
    | Migration target | Microsoft Fabric | `fabric-mcp`: Microsoft's official Fabric MCP server. The build clones the `main` branch of [Franzz/fabric-modeling-mcp](https://github.com/Franzz/fabric-modeling-mcp) into `modeling-mcp/fabric` (or updates that checkout), then runs its own build, which installs the server and sets up the Microsoft sign-in (the Azure CLI in `modeling-mcp/fabric/.venv`, or VS Code's sign-in on Windows), see [modeling-mcp/fabric/README.md](modeling-mcp/fabric/README.md) |
    | Migration target | SAP Datasphere | `datasphere-mcp`: the independent repo in `modeling-mcp/datasphere`. Its build installs SAP's official Datasphere CLI and the custom modeling MCP. Configure the tenant and OAuth sign-in as described in [modeling-mcp/datasphere/README.md](modeling-mcp/datasphere/README.md). By default the parent uses this local repo without fetching or switching branches. |
-   | | Snowflake, Databricks, Google BigQuery | none yet: nothing is added to `.mcp.json` |
+   | Migration target | Snowflake + dbt | `snowflake-dbt-mcp`: the independent repo in `modeling-mcp/snowflake-dbt`. Its build uses uv/Python 3.12 to install dbt Core, the Snowflake adapter and the custom MCP into a local `.venv`. Maps BW storage to Snowflake and transformations to dbt. See [modeling-mcp/snowflake-dbt/README.md](modeling-mcp/snowflake-dbt/README.md). |
+   | | Databricks, Google BigQuery | none yet: nothing is added to `.mcp.json` |
 
    Press Enter to keep the current choice. Without a terminal, or with `npm run build -- --yes`, the current choices are kept without asking. Servers you add to `.mcp.json` by hand are kept.
 
-   The folders under `modeling-mcp/`, including `datasphere/`, are ignored by this parent repository and managed as independent git repositories. Until Datasphere has a remote configured for this build, prepare its checkout locally before selecting it.
+   To select Snowflake/dbt directly: `npm run build -- --yes --target=snowflake-dbt`.
+   Other target flags are `fabric`, `datasphere`, `databricks` and `bigquery`.
+
+   The folders under `modeling-mcp/`, including `datasphere/` and `snowflake-dbt/`, are ignored by this parent repository and managed as independent git repositories. Prepare those checkouts locally before selecting them, or supply their remote build variables.
 
 2. **Connection details:** copy `.destination.properties` from the Eclipse ADT/BWMT project of the system. Eclipse writes it when the project is created, at:
 
@@ -61,5 +65,17 @@ Set these in the environment of `npm run build`. Each checkout is cloned on the 
 | `DATASPHERE_MCP_DIR` | `modeling-mcp/datasphere` | Folder of the independent Datasphere server repo |
 | `DATASPHERE_MCP_REPO` | unset | Optional remote URL; when set, clone/update the Datasphere repo like the other servers. Otherwise use the local checkout as-is |
 | `DATASPHERE_MCP_BRANCH` | `main` | Branch used when `DATASPHERE_MCP_REPO` is set |
+| `SNOWFLAKE_DBT_MCP_DIR` | `modeling-mcp/snowflake-dbt` | Folder of the independent Snowflake/dbt MCP repo |
+| `SNOWFLAKE_DBT_MCP_REPO` | unset | Optional remote URL; otherwise build the existing local checkout |
+| `SNOWFLAKE_DBT_MCP_BRANCH` | `main` | Branch used when `SNOWFLAKE_DBT_MCP_REPO` is set |
+| `SNOWFLAKE_DBT_UV` | `uv` | uv executable used to install the isolated dbt/MCP environment |
 
 The Datasphere target enables `read,write` tools by default; create/update saves drafts unless a tool call sets `deploy=true`. Enable `execute` or `delete` separately if needed. Datasphere connection settings stay in its ignored `datasphere.config.json`, or can be supplied through `DATASPHERE_*` environment variables. See its README for all settings and tool scopes.
+
+The Snowflake/dbt target enables local planning and artifact writing (`read,write`)
+by default. Add `execute` to `SNOWFLAKE_DBT_SCOPES` for warehouse deployment and dbt
+runs. Configure credentials in `modeling-mcp/snowflake-dbt/.env` using its example;
+SAP credentials remain separate. VS Code settings use its dbt environment with
+the existing Power User extension. Tasks prepare and parse the bundled example.
+Data extraction/loading, ABAP routines and BW delta semantics require explicit
+conversion; the MCP reports blockers before generating an executable project.

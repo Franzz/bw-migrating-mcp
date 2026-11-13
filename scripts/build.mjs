@@ -8,7 +8,8 @@
 //                            its build.mjs, which installs Microsoft's official Fabric MCP server and
 //                            its sign-in
 //   target SAP Datasphere    datasphere-mcp: runs the independent modeling-mcp/datasphere build
-//   target Snowflake, Databricks, Google BigQuery
+//   target Snowflake + dbt   snowflake-dbt-mcp: runs the independent modeling-mcp/snowflake-dbt build
+//   target Databricks, Google BigQuery
 //                            offered, but no MCP server yet: nothing is added for them
 // Servers added to .mcp.json by hand are kept.
 //
@@ -24,6 +25,9 @@
 //   DATASPHERE_MCP_DIR checkout folder        (default: modeling-mcp/datasphere)
 //   DATASPHERE_MCP_REPO optional git URL      (unset: use the existing independent local repo)
 //   DATASPHERE_MCP_BRANCH branch to check out (default: main; used only with DATASPHERE_MCP_REPO)
+//   SNOWFLAKE_DBT_MCP_DIR checkout folder     (default: modeling-mcp/snowflake-dbt)
+//   SNOWFLAKE_DBT_MCP_REPO optional git URL   (unset: use the existing independent local repo)
+//   SNOWFLAKE_DBT_MCP_BRANCH branch           (default: main; used only with SNOWFLAKE_DBT_MCP_REPO)
 //
 // For each checkout, first run: clones the branch. Later runs: fetches, switches to the branch and
 // fast-forwards it. Local commits or uncommitted changes in a checkout are never discarded: git stops instead.
@@ -47,6 +51,7 @@ function checkout(prefix, folder, repo, branch) {
 const bwCheckout = checkout('BW_MCP', 'bw', 'https://github.com/Franzz/bw-modeling-mcp.git', 'bw-migration');
 const fabricCheckout = checkout('FABRIC_MCP', 'fabric', 'https://github.com/Franzz/fabric-modeling-mcp.git', 'main');
 const datasphereCheckout = checkout('DATASPHERE_MCP', 'datasphere', undefined, 'main');
+const snowflakeCheckout = checkout('SNOWFLAKE_DBT_MCP', 'snowflake-dbt', undefined, 'main');
 
 function log(message) {
   process.stdout.write(`[build] ${message}\n`);
@@ -125,6 +130,17 @@ async function buildDatasphereServer(options) {
   return (await import(pathToFileURL(entry).href)).build(options);
 }
 
+async function buildSnowflakeServer(options) {
+  const { dir, repo } = snowflakeCheckout;
+  if (repo) syncCheckout(snowflakeCheckout);
+  const entry = path.join(dir, 'build.mjs');
+  if (!fs.existsSync(entry)) {
+    throw new Error(`${entry} not found. Prepare the independent Snowflake/dbt repo there, or set SNOWFLAKE_DBT_MCP_REPO to clone it.`);
+  }
+  log(`Snowflake/dbt MCP checkout ready: ${dir}`);
+  return (await import(pathToFileURL(entry).href)).build(options);
+}
+
 // Systems a migration can read from (sources) and write to (targets).
 // setup({ current, interactive }) prepares the system and returns its .mcp.json entries;
 // names lists the entries it owns.
@@ -159,8 +175,13 @@ const TARGETS = [
     names: ['datasphere-mcp'],
     setup: buildDatasphereServer,
   },
+  {
+    label: 'Snowflake + dbt',
+    names: ['snowflake-dbt-mcp'],
+    setup: buildSnowflakeServer,
+  },
   // Offered, but nothing to set up yet.
-  ...['Snowflake', 'Databricks', 'Google BigQuery'].map((label) => ({ label, names: [] })),
+  ...['Databricks', 'Google BigQuery'].map((label) => ({ label, names: [] })),
 ];
 
 /** Asks on a terminal; otherwise answers with the default. */
@@ -197,7 +218,12 @@ try {
 
   // Questions first, so the build runs unattended afterwards.
   const source = await prompt.pick('Migration source?', SOURCES, defaultOf(SOURCES));
-  const target = await prompt.pick('Migration target?', TARGETS, defaultOf(TARGETS));
+  const targetFlag = process.argv.find((arg) => arg.startsWith('--target='))?.slice('--target='.length);
+  const targetOverride = targetFlag === undefined ? undefined : TARGETS.find((s) =>
+    ({ 'Microsoft Fabric': 'fabric', 'SAP Datasphere': 'datasphere', 'Snowflake + dbt': 'snowflake-dbt',
+      Databricks: 'databricks', 'Google BigQuery': 'bigquery' })[s.label] === targetFlag);
+  if (targetFlag !== undefined && !targetOverride) throw new Error(`Unknown --target=${targetFlag}. Use fabric, datasphere, snowflake-dbt, databricks or bigquery.`);
+  const target = targetOverride ?? await prompt.pick('Migration target?', TARGETS, defaultOf(TARGETS));
   prompt.close();
 
   const chosen = [source, target].filter((system) => {

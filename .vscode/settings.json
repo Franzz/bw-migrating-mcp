@@ -1,4 +1,9 @@
 {
+    "python.defaultInterpreterPath": "${workspaceFolder}/modeling-mcp/snowflake-dbt/.venv/bin/python",
+    "python.envFile": "${workspaceFolder}/modeling-mcp/snowflake-dbt/.env",
+    "dbt.dbtIntegration": "core",
+    "dbt.dbtPythonPathOverride": "${workspaceFolder}/modeling-mcp/snowflake-dbt/.venv/bin/python",
+    "dbt.allowListFolders": ["modeling-mcp/snowflake-dbt/workspace"],
     "chat.agentSkillsLocations": {
         ".agents/skills": true,
         ".github/skills": true,

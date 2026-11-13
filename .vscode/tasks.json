@@ -1,0 +1,29 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Snowflake/dbt: local build",
+      "type": "process",
+      "command": "node",
+      "args": ["build.mjs"],
+      "options": {"cwd": "${workspaceFolder}/modeling-mcp/snowflake-dbt"},
+      "problemMatcher": []
+    },
+    {
+      "label": "Snowflake/dbt: prepare example",
+      "type": "process",
+      "command": "node",
+      "args": ["scripts/python.mjs", "scripts/example.py"],
+      "options": {"cwd": "${workspaceFolder}/modeling-mcp/snowflake-dbt"},
+      "problemMatcher": []
+    },
+    {
+      "label": "Snowflake/dbt: parse example",
+      "type": "process",
+      "command": "node",
+      "args": ["scripts/python.mjs", "-m", "snowflake_dbt_mcp.cli", "parse", "--project-dir", "workspace/bw_sales", "--profiles-dir", "workspace/bw_sales"],
+      "options": {"cwd": "${workspaceFolder}/modeling-mcp/snowflake-dbt"},
+      "problemMatcher": []
+    }
+  ]
+}
