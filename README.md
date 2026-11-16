@@ -38,6 +38,16 @@ Access is read-only, and the server certificate is checked against the BW root C
 
 4. **Agents:** The agent opens this folder (tested with Claude Code). Approve the servers when asked and check them with `/mcp`. After a new build, restart the agent (in VS Code: **Developer: Reload Window**) so it loads the new `.mcp.json`.
 
+   For Codex, register the same launcher in its shared CLI/IDE configuration:
+
+   ```bash
+   codex mcp add bw-mcp --env BW_STDIO_SCOPES=read -- node "$PWD/start-bw-mcp.mjs"
+   ```
+
+   Run this from the project root, then restart the Codex extension to load the
+   server. `.mcp.json` alone does not configure Codex. See the
+   [Codex MCP setup guide](https://developers.openai.com/codex/mcp).
+
 ## Options
 
 Set these under `env` of `bw-mcp` in `.mcp.json`. Variables set there win over the files, and a new build keeps them.
@@ -45,9 +55,16 @@ Set these under `env` of `bw-mcp` in `.mcp.json`. Variables set there win over t
 | Variable | Default | Effect |
 |---|---|---|
 | `BW_STDIO_SCOPES` | `read` | `write` also offers the tools that create, change, activate or delete objects |
+| `BW_TOOL_MODE` | `focused` | Version 2 groups operations under `bw_read`, `bw_find`, etc.; `full` offers individual tools |
 | `BW_MCP_DIR` | `modeling-mcp/bw` | Folder of the built server (also read by `npm run build`) |
 | `BW_CA_FILE` | `rootca.pem` | CA bundle used to verify the server certificate |
 | `BW_URL`, `BW_CLIENT`, `BW_LANGUAGE` | from `.destination.properties` | Override the connection details |
+
+With the v2 focused surface, `bw_describe` returns the parameters of each
+operation. On classic BW, read transformations and DTPs with `bw_find`,
+`operation=metadata_tables`, `object_type=TRFN` or `DTPA`; `bw_find` with
+`operation=dtps` lists a transformation's dependent DTPs. The server hides direct
+REST reads when the BW system does not publish those resources.
 
 ### Build options
 

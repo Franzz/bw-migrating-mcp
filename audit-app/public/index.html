@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BW Migration Audit</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="layout">
+    <main class="main" id="main">
+      <header class="topbar">
+        <div class="brand">
+          <a class="brand-logo" href="https://teamwork-ch.net/" target="_blank" rel="noopener" title="TeamWork">
+            <img src="/teamwork-initials-white.png" alt="TeamWork" />
+          </a>
+          <div class="titles">
+            <h1>BW migration audit</h1>
+            <p class="subtitle" id="system-line">No audit yet</p>
+          </div>
+        </div>
+        <div class="actions">
+          <div class="segmented" role="group" aria-label="Scope">
+            <button type="button" data-scope="custom" aria-pressed="true">Customer objects</button>
+            <button type="button" data-scope="all" aria-pressed="false">Include SAP content</button>
+          </div>
+          <button type="button" class="btn primary" id="run-audit">Run audit</button>
+        </div>
+      </header>
+
+      <fieldset class="targets" id="targets">
+        <legend>Migration target</legend>
+        <div class="target-options" id="target-options" role="radiogroup" aria-label="Migration target"></div>
+        <p class="target-desc" id="target-desc"></p>
+      </fieldset>
+
+      <div class="progress" id="progress" hidden>
+        <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+        <span id="progress-text">Starting</span>
+      </div>
+
+      <section id="empty" class="empty" hidden>
+        <h2>No audit snapshot yet</h2>
+        <p>Run the audit to read the BW system through bw-mcp. A full run takes a few minutes; the result is saved in <code>audit-app/data/latest.json</code>.</p>
+      </section>
+
+      <div id="content" hidden>
+        <section class="kpis" id="kpis" aria-label="Key figures"></section>
+
+        <section class="grid-2">
+          <article class="card">
+            <h2>Average difficulty by area</h2>
+            <p class="card-sub">1 = lift and shift, 5 = redesign</p>
+            <div id="chart-categories" class="chart"></div>
+          </article>
+          <article class="card">
+            <h2>Objects by difficulty</h2>
+            <p class="card-sub">Number of scored objects at each level</p>
+            <div id="chart-distribution" class="chart"></div>
+          </article>
+        </section>
+
+        <section class="card">
+          <h2>Key findings</h2>
+          <ul class="findings" id="findings"></ul>
+        </section>
+
+        <section class="card">
+          <div class="tabs" role="tablist">
+            <button role="tab" aria-selected="true" data-tab="objects">Objects</button>
+            <button role="tab" aria-selected="false" data-tab="flows">Data flows</button>
+            <button role="tab" aria-selected="false" data-tab="chains">Process chains</button>
+            <button role="tab" aria-selected="false" data-tab="sources">Source systems</button>
+            <button role="tab" aria-selected="false" data-tab="inventory">Inventory</button>
+          </div>
+
+          <div class="tab-panel" data-panel="objects">
+            <div class="filters">
+              <input type="search" id="f-search" placeholder="Search name or description" aria-label="Search">
+              <select id="f-category" aria-label="Area"><option value="">All areas</option></select>
+              <select id="f-type" aria-label="Type"><option value="">All types</option></select>
+              <select id="f-min" aria-label="Minimum difficulty">
+                <option value="1">Any difficulty</option>
+                <option value="3">3 and above</option>
+                <option value="4">4 and above</option>
+                <option value="5">5 only</option>
+              </select>
+            </div>
+            <div class="table-wrap"><table class="data" id="objects-table"></table></div>
+            <p class="table-note" id="objects-note"></p>
+          </div>
+          <div class="tab-panel" data-panel="flows" hidden><div class="table-wrap"><table class="data" id="flows-table"></table></div></div>
+          <div class="tab-panel" data-panel="chains" hidden><div class="table-wrap"><table class="data" id="chains-table"></table></div></div>
+          <div class="tab-panel" data-panel="sources" hidden><div class="table-wrap"><table class="data" id="sources-table"></table></div></div>
+          <div class="tab-panel" data-panel="inventory" hidden><div class="table-wrap"><table class="data" id="inventory-table"></table></div></div>
+        </section>
+
+        <p class="footnote" id="footnote"></p>
+      </div>
+    </main>
+
+    <aside class="chat" id="chat" aria-label="Chat with Claude">
+      <div class="chat-head">
+        <div>
+          <h2>Ask Claude</h2>
+          <p class="card-sub">Reads the audit and the live BW system (read-only)</p>
+        </div>
+        <div class="chat-head-actions">
+          <button type="button" class="btn ghost" id="chat-new" title="Start a new conversation">New</button>
+          <button type="button" class="btn ghost chat-close" id="chat-close" aria-label="Close chat">✕</button>
+        </div>
+      </div>
+      <div class="chat-log" id="chat-log" aria-live="polite"></div>
+      <div class="suggestions" id="suggestions"></div>
+      <form class="chat-form" id="chat-form">
+        <textarea id="chat-input" rows="3" placeholder="Ask about the audit, an object, or the migration plan" aria-label="Message"></textarea>
+        <div class="chat-form-row">
+          <span class="hint">Enter to send, Shift+Enter for a new line</span>
+          <button type="button" class="btn ghost" id="chat-stop" hidden>Stop</button>
+          <button type="submit" class="btn primary" id="chat-send">Send</button>
+        </div>
+      </form>
+    </aside>
+  </div>
+  <button type="button" class="chat-fab" id="chat-open">Ask Claude</button>
+  <div class="tooltip" id="tooltip" role="tooltip" hidden></div>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

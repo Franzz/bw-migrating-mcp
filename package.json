@@ -9,6 +9,7 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "start": "node start-bw-mcp.mjs",
+    "audit-app-start": "npm --prefix audit-app start",
     "test": "node --test test/*.test.mjs"
   }
 }
