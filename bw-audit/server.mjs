@@ -13,6 +13,11 @@ import { closeClient } from './lib/mcp.mjs';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 5180);
 const HOST = '127.0.0.1';
+const allowedOrigins = new Set([
+  `http://${HOST}:${PORT}`,
+  `http://localhost:${PORT}`,
+  ...(process.env.PUBLIC_ORIGIN ? [new URL(process.env.PUBLIC_ORIGIN).origin] : []),
+]);
 
 const STATIC = {
   '/': ['public/index.html', 'text/html; charset=utf-8'],
@@ -75,7 +80,7 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
   // Refuse cross-site requests: only same-origin pages may call the API.
   const origin = req.headers.origin;
-  if (origin && origin !== `http://${HOST}:${PORT}` && origin !== `http://localhost:${PORT}`) {
+  if (origin && !allowedOrigins.has(origin)) {
     return json(res, 403, { error: 'cross-origin request refused' });
   }
   try {

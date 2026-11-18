@@ -532,7 +532,7 @@ function renderChatIntro() {
   if (log.children.length && !log.querySelector('.intro')) return;
   log.innerHTML = state.chatEnabled
     ? `<div class="msg notice intro">Ask about the audit, any object in it, or the migration approach. Claude can read the live BW system through bw-mcp (read-only) to check details.<br><span class="card-sub">${state.chatBackend === 'claude-code' ? 'Runs through Claude Code with your Claude login.' : 'Runs on the Claude API with your API key.'}</span></div>`
-    : `<div class="msg notice intro"><strong>Chat is not configured.</strong> Install Claude Code and sign in (<code>claude</code>), or set <code>ANTHROPIC_API_KEY</code> in <code>audit-app/.env</code>, then restart <code>npm start</code>. The audit works without it.</div>`;
+    : `<div class="msg notice intro"><strong>Chat is not configured.</strong> Install Claude Code and sign in (<code>claude</code>), or set <code>ANTHROPIC_API_KEY</code> in <code>bw-audit/.env</code>, then restart <code>npm start</code>. The audit works without it.</div>`;
   $('#suggestions').innerHTML = state.chatEnabled
     ? SUGGESTIONS.map((s) => `<button class="chip" type="button">${esc(s)}</button>`).join('')
     : '';

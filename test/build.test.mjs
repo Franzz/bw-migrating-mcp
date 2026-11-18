@@ -19,6 +19,18 @@ async function fixture(t, { withDatasphere = true, customDirectory = false, snow
   const bin = path.join(dir, 'bin');
   await mkdir(bin);
   for (const name of ['git', 'npm', 'uv']) await writeFile(path.join(bin, name), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+  const npmCallsPath = path.join(dir, 'npm-calls.jsonl');
+  await writeFile(path.join(bin, 'npm'), `#!${process.execPath}
+import fs from 'node:fs';
+const args = process.argv.slice(2);
+fs.appendFileSync(process.env.MIGRATION_TEST_NPM_LOG, JSON.stringify({ cwd: process.cwd(), args }) + '\\n');
+if (process.env.MIGRATION_TEST_FAIL_AUDIT_INSTALL && args[0] === '--prefix' && args[1] === 'bw-audit') {
+  console.error('audit dependency install failed');
+  process.exit(1);
+}
+`, { mode: 0o755 });
+  await mkdir(path.join(dir, 'bw-audit'));
+  await copyFile(path.join(root, 'bw-audit/package.json'), path.join(dir, 'bw-audit/package.json'));
   await mkdir(path.join(dir, 'modeling-mcp/bw/.git'), { recursive: true });
   await writeFile(path.join(dir, 'modeling-mcp/bw/package.json'), '{}');
   const datasphereDir = path.join(dir, customDirectory ? 'independent-datasphere' : 'modeling-mcp/datasphere');
@@ -45,10 +57,35 @@ async function fixture(t, { withDatasphere = true, customDirectory = false, snow
   await writeFile(configPath, JSON.stringify(initial));
   const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !/^(BW_|FABRIC_|DATASPHERE_|SNOWFLAKE_|DBT_)/.test(key)));
   env.PATH = `${bin}${path.delimiter}${process.env.PATH}`;
+  env.MIGRATION_TEST_NPM_LOG = npmCallsPath;
+  delete env.MIGRATION_TEST_FAIL_AUDIT_INSTALL;
   if (customDirectory) env.DATASPHERE_MCP_DIR = datasphereDir;
   if (customDirectory) env.SNOWFLAKE_DBT_MCP_DIR = snowflakeDir;
-  return { dir, env, initial, configPath, datasphereDir, snowflakeDir };
+  return { dir, env, initial, configPath, datasphereDir, snowflakeDir, npmCallsPath };
 }
+
+test('selecting SAP BW installs audit dependencies from the repository root even when invoked elsewhere', async (t) => {
+  const context = await fixture(t);
+  await execute(process.execPath, [path.join(context.dir, 'scripts/build.mjs'), '--yes', '--target=databricks'], {
+    cwd: path.join(context.dir, 'scripts'), env: context.env,
+  });
+  const calls = (await readFile(context.npmCallsPath, 'utf8')).trim().split('\n').map(line => JSON.parse(line));
+  assert.deepEqual(calls.filter(call => call.args.includes('bw-audit')), [
+    { cwd: context.dir, args: ['--prefix', 'bw-audit', 'install'] },
+  ]);
+  const { mcpServers } = JSON.parse(await readFile(context.configPath, 'utf8'));
+  assert.ok(mcpServers['bw-mcp']);
+});
+
+test('a failed audit dependency install stops the build without rewriting MCP configuration', async (t) => {
+  const context = await fixture(t);
+  context.env.MIGRATION_TEST_FAIL_AUDIT_INSTALL = '1';
+  await assert.rejects(execute(process.execPath, ['scripts/build.mjs', '--yes'], { cwd: context.dir, env: context.env }), error => {
+    assert.match(error.stderr, /audit dependency install failed/);
+    return true;
+  });
+  assert.deepEqual(JSON.parse(await readFile(context.configPath, 'utf8')), context.initial);
+});
 
 test('root build selects Datasphere, preserves settings and custom servers, and resolves its independent path', async (t) => {
   const context = await fixture(t);

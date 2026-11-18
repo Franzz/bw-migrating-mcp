@@ -1,0 +1,20 @@
+[Unit]
+Description=BW migration audit app
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/var/www/html/bw-migrating-mcp
+Environment=NODE_ENV=production
+Environment=PORT=5180
+Environment=PUBLIC_ORIGIN=http://bw-audit.localhost
+ExecStart=/usr/bin/env npm run bw-audit-start
+Restart=on-failure
+RestartSec=5
+KillMode=control-group
+TimeoutStopSec=30
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

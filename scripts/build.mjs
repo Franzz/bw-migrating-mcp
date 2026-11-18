@@ -3,7 +3,8 @@
 //
 // Asks for the migration source and the migration target, prepares the MCP server of each
 // and writes them into .mcp.json, the only MCP file Claude Code reads here:
-//   source SAP BW            bw-mcp: fetches bw-modeling-mcp into modeling-mcp/bw and builds it
+//   source SAP BW            bw-mcp: fetches bw-modeling-mcp into modeling-mcp/bw and builds it;
+//                            installs the audit app dependencies
 //   target Microsoft Fabric  fabric-mcp: fetches fabric-modeling-mcp into modeling-mcp/fabric and runs
 //                            its build.mjs, which installs Microsoft's official Fabric MCP server and
 //                            its sign-in
@@ -151,6 +152,7 @@ const SOURCES = [
     names: ['bw-mcp'],
     setup: ({ current }) => {
       buildBwServer();
+      run(root, 'npm', ['--prefix', 'bw-audit', 'install']);
       return {
         'bw-mcp': {
           type: 'stdio',

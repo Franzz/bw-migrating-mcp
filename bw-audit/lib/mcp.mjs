@@ -25,7 +25,7 @@ async function connect() {
     stderr: 'pipe',
   });
   transport.stderr?.on('data', (chunk) => process.stderr.write(`[bw-mcp] ${chunk}`));
-  const client = new Client({ name: 'bw-audit-app', version: '1.0.0' });
+  const client = new Client({ name: 'bw-audit', version: '1.0.0' });
   await client.connect(transport);
   transport.onclose = () => { clientPromise = null; };
   return client;

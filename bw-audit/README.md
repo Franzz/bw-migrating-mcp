@@ -6,11 +6,16 @@ The chat can query the audit snapshot and read the live BW system with the same 
 
 ## Run
 
+The main `npm run build` installs the audit app dependencies when SAP BW is selected
+as the migration source. After completing that setup:
+
 ```bash
-cd audit-app
-npm install
+cd bw-audit
 npm start               # http://localhost:5180
 ```
+
+To serve the app at `http://bw-audit.localhost` with nginx or Apache and manage
+it with systemd, use the [site and service configuration](config/README.md).
 
 Click **Run audit** in the page, or run `npm run audit` from the terminal. A run takes about 3 minutes on this system. It writes `data/latest.json`, plus a timestamped copy for comparing runs.
 

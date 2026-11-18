@@ -5,7 +5,6 @@
 //
 //   BW_MCP_DIR            bw-modeling-mcp checkout (default: modeling-mcp/bw, as built by npm run build)
 //   BW_ECLIPSE_PROJECT    Eclipse project, used only when .destination.properties is missing
-//                         here (default: S4H_100_flutran_en)
 //   BW_ECLIPSE_WORKSPACE  Eclipse workspace folder (default: ~/eclipse-workspace)
 //
 // Defaults applied here: BW_STDIO_SCOPES=read (no write tools) and BW_CA_FILE=rootca.pem.
@@ -40,7 +39,7 @@ function fail(message) {
 }
 
 const workspace = env.BW_ECLIPSE_WORKSPACE || path.join(os.homedir(), 'eclipse-workspace');
-const project = env.BW_ECLIPSE_PROJECT || 'S4H_100_flutran_en';
+const project = env.BW_ECLIPSE_PROJECT;
 const localDest = path.join(here, '.destination.properties');
 const eclipseDest = path.join(workspace, '.metadata/.plugins/org.eclipse.core.resources.semantic/.cache',
   project, '.destination.properties');

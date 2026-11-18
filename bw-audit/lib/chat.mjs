@@ -59,7 +59,7 @@ export async function chatTurn({ sessionId, text, audit, emit, signal }) {
     return claudeCodeTurn({ sessionId, text, audit, emit, signal, binary: claudeBinary });
   }
   if (!backend) {
-    emit({ type: 'error', message: `Chat unavailable: ${detail}. Set ANTHROPIC_API_KEY in audit-app/.env, or install Claude Code.` });
+    emit({ type: 'error', message: `Chat unavailable: ${detail}. Set ANTHROPIC_API_KEY in bw-audit/.env, or install Claude Code.` });
     return;
   }
   anthropic ??= new Anthropic();

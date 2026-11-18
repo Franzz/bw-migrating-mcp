@@ -1,5 +1,5 @@
 {
-  "name": "bw-audit-app",
+  "name": "bw-audit",
   "private": true,
   "description": "Local web interface: audit of the SAP BW system and its migration difficulty, with a Claude chat attached to bw-mcp",
   "type": "module",
