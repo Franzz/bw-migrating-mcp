@@ -52,6 +52,9 @@ const fabric = {
       ? [{ text: 'Fabric: reproduced with Power BI row-level security', points: -0.5 }]
       : [],
     AFO: () => [{ text: 'Fabric: Analyze in Excel over the Power BI semantic model replaces the workbook', points: -0.5 }],
+    IOBJ: (o) => o.details?.hierarchies
+      ? [{ text: 'Fabric: hierarchies become flattened level columns or parent-child DAX (PATH functions) in Power BI' }]
+      : [{ text: 'Fabric: dimension table in the Lakehouse, related in the Power BI semantic model' }],
     ALVL: () => [{ text: 'Fabric: no native planning; needs a third-party planning tool (Power BI write-back visuals or an EPM tool)' }],
   },
   findings: {
@@ -97,6 +100,9 @@ const snowflakeDbt = {
       ? [{ text: 'Snowflake: row access policies can carry the authorization logic' }]
       : [],
     AFO: () => [{ text: 'Snowflake + dbt: no Excel planning/analysis add-in; rebuild in the chosen BI tool or Excel over ODBC', points: 0.5 }],
+    IOBJ: (o) => o.details?.timeDependent
+      ? [{ text: 'dbt: snapshots keep the validity periods of time-dependent attributes (SCD type 2)', points: -0.5 }]
+      : [{ text: 'dbt: dimension model with its text join' }],
     ALVL: () => [{ text: 'Snowflake + dbt: no planning capability; needs a separate planning tool' }],
   },
   findings: {
@@ -151,6 +157,7 @@ const datasphere = {
       return [];
     },
     AFO: () => [{ text: 'Datasphere: Analysis for Office connects to SAP Analytics Cloud and Datasphere models', points: -1 }],
+    IOBJ: () => [{ text: 'Datasphere: dimension view with text and hierarchy associations, or the InfoObject carried over to the BW Bridge', points: -0.5 }],
     ALVL: () => [{ text: 'Datasphere: BW-IP moves to SAC planning on Datasphere; still a redesign, but an SAP-supported path', points: -1 }],
   },
   findings: {
@@ -194,6 +201,9 @@ const bigquery = {
       ? [{ text: 'BigQuery: row-level access policies and Looker access filters carry the logic' }]
       : [],
     AFO: () => [{ text: 'BigQuery: Connected Sheets or Looker replace the Excel workbook', points: 0.5 }],
+    IOBJ: (o) => o.details?.hierarchies
+      ? [{ text: 'BigQuery: hierarchies flattened into level columns, or kept parent-child for Looker' }]
+      : [{ text: 'BigQuery: dimension table (Dataform), texts joined in' }],
     ALVL: () => [{ text: 'BigQuery: no planning capability; needs a separate planning tool' }],
   },
   findings: {

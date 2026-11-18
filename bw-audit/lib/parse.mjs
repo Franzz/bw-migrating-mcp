@@ -148,6 +148,26 @@ export function parseLoadHistory(text) {
   return { requests: rows, lastLoad: dates.at(-1) || null };
 }
 
+/** Metadata tables write the namespace slashes as dollars: $ERP$PLAMT is /ERP/PLAMT. */
+export function iobjName(name = '') {
+  return name.replace(/^\$([^$]+)\$/, '/$1/');
+}
+
+/**
+ * The characteristics a provider uses, from the "Characteristics" section of a metadata
+ * read: INFOOBJECT column, navigation attributes (A__B) counted as their base A.
+ */
+export function providerInfoObjects(text) {
+  const body = sections(text).Characteristics || '';
+  const out = new Set();
+  for (const line of body.split('\n')) {
+    const m = line.match(/^ {2}(\S+)/);
+    if (!m || m[1] === 'INFOOBJECT') continue;
+    out.add(iobjName(m[1].split('__')[0]));
+  }
+  return [...out];
+}
+
 /** CUBE / ODSO / MPRO metadata read. */
 export function parseProvider(text) {
   const s = sections(text);
@@ -155,6 +175,7 @@ export function parseProvider(text) {
   const parts = [...(s['Part Providers'] || '').matchAll(/^\s+\d+\s+([A-Z]{4})\s+(\S+)/gm)]
     .map((m) => ({ type: m[1], name: m[2] }));
   return {
+    infoObjects: providerInfoObjects(text),
     description: headerValue(head, 'Description'),
     infoArea: headerValue(head, 'InfoArea'),
     providerType: headerValue(head, 'Type'),
@@ -180,6 +201,37 @@ export function parseAdso(text) {
     externalHanaView: flag('HANA-View|HANA View'),
     writeInterface: flag('Schreib-Interface|Write Interface'),
     fields: sectionCount(text, 'Fields'),
+  };
+}
+
+/** bw_read type=adso format=raw: the InfoObjects behind the aDSO fields. */
+export function adsoInfoObjects(xml) {
+  const out = new Set();
+  for (const m of xml.matchAll(/<element\b[^>]*\binfoObjectName="([^"]+)"/g)) out.add(m[1]);
+  return [...out];
+}
+
+/** bw_read type=alvl (text). */
+export function parseAggregationLevel(text) {
+  const provider = headerValue(text, 'InfoProvider');
+  return {
+    infoArea: headerValue(text, 'InfoArea'),
+    provider: provider ? iobjName(provider.split(/\s+/)[0]) : null,
+  };
+}
+
+/** bw_read type=iobj (XML behind a one-line header): master data properties. */
+export function parseInfoObject(text) {
+  const has = (re) => re.test(text);
+  return {
+    infoArea: text.match(/<infoArea>([^<]+)<\/infoArea>/)?.[1] || null,
+    iobjType: text.match(/<infoObjectType>([^<]+)<\/infoObjectType>/)?.[1] || null,
+    masterData: has(/<masterDataProperties[^>]*withMasterData="true"/),
+    texts: has(/<textProperties[^>]*(?:shortTextAvailable|mediumTextAvailable|longTextAvailable)="true"/),
+    timeDependent: has(/timeDependentTextAvailable="true"/) || has(/<attributeN\b[^>]*timeDependent="true"/),
+    hierarchies: has(/<hierarchyProperties[^>]*withHierarchies="true"/),
+    attributes: (text.match(/<attributeN\b/g) || []).length,
+    createdBy: text.match(/adtcore:createdBy="([^"]+)"/)?.[1] || null,
   };
 }
 

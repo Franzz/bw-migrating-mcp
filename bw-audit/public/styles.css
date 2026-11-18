@@ -22,6 +22,7 @@
   --th-text: #ffffff;
   --th2-bg: var(--tw-navy);
   --bar: var(--tw-blue);
+  --bar-muted: #9aa3b5;
   --track: #e3f2fa;
   /* ordinal difficulty ramp (validated: one hue, monotone, light end >= 2:1) */
   --d1: #5bbbe9; --d2: #1ea4e2; --d3: #0089c9; --d4: #006a9e; --d5: #004c73;
@@ -40,7 +41,7 @@
     --bg: #10131c; --surface: #181c27; --surface-2: #1d2230; --border: #2b3142; --grid: #2a2f3d;
     --text: #e8ebf3; --text-2: #b7bdcc; --text-3: #8d94a7;
     --accent-text: #4cc0f2; --title: #33b1ea; --subtitle: #c9d2ee;
-    --th-bg: #0b6f9f; --th2-bg: #262f57; --bar: #33b1ea; --track: #1f3443;
+    --th-bg: #0b6f9f; --th2-bg: #262f57; --bar: #33b1ea; --bar-muted: #5d6578; --track: #1f3443;
     --d1: #0c5884; --d2: #006e9f; --d3: #0090cf; --d4: #33b1ea; --d5: #7fcdf1;
     --chip: #232a3a; --user-bubble: #16303f;
     --shadow: none;
@@ -51,7 +52,7 @@
   --bg: #10131c; --surface: #181c27; --surface-2: #1d2230; --border: #2b3142; --grid: #2a2f3d;
   --text: #e8ebf3; --text-2: #b7bdcc; --text-3: #8d94a7;
   --accent-text: #4cc0f2; --title: #33b1ea; --subtitle: #c9d2ee;
-  --th-bg: #0b6f9f; --th2-bg: #262f57; --bar: #33b1ea; --track: #1f3443;
+  --th-bg: #0b6f9f; --th2-bg: #262f57; --bar: #33b1ea; --bar-muted: #5d6578; --track: #1f3443;
   --d1: #0c5884; --d2: #006e9f; --d3: #0090cf; --d4: #33b1ea; --d5: #7fcdf1;
   --chip: #232a3a; --user-bubble: #16303f;
   --shadow: none;
@@ -156,6 +157,50 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .tooltip { position: fixed; z-index: 50; pointer-events: none; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; font-size: 12.5px; box-shadow: 0 4px 16px rgba(0,0,0,.14); max-width: 280px; }
 .tooltip strong { display: block; font-weight: 600; margin-bottom: 2px; }
 
+/* Target architecture */
+.domain-picker { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 14px; }
+.domain-picker button { border: 1px solid var(--border); background: var(--surface); border-radius: 8px; padding: 5px 10px; cursor: pointer; color: var(--text-2); font-weight: 600; font-size: 12.5px; }
+.domain-picker button:hover { border-color: var(--accent); }
+.domain-picker button[aria-selected="true"] { background: var(--th2-bg); border-color: var(--th2-bg); color: #fff; }
+.domain-picker button.special { border-style: dashed; }
+.domain-picker .count { font-weight: 400; opacity: .75; margin-left: 2px; }
+.arch-head { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding: 12px 14px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--border); border-left: 4px solid var(--tw-blue); }
+.arch-head h3 { color: var(--subtitle); font-size: 16px; font-weight: 600; }
+.arch-head h3 .key { font-size: 12.5px; color: var(--text-3); font-weight: 400; margin-left: 4px; }
+.arch-head p { margin: 4px 0 0; color: var(--text-2); font-size: 13px; max-width: 72ch; }
+.arch-stats { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.arch-stats .card-sub { margin: 0; }
+.arch-actions { display: flex; gap: 6px; margin-top: 2px; }
+.arch-layers { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 6px; }
+.arch-layer { display: grid; grid-template-columns: 170px minmax(0, 1fr) auto; gap: 14px; align-items: start; padding: 10px 14px; border: 1px solid var(--border); border-radius: 10px; }
+.arch-layer-name { display: flex; align-items: center; gap: 8px; font-weight: 600; color: var(--subtitle); font-size: 13px; }
+.arch-layer-name .ico { width: 24px; height: 24px; border-radius: 6px; display: inline-grid; place-items: center; background: var(--track); color: var(--accent-text); font-size: 13px; flex: none; }
+.arch-layer-body strong { font-weight: 600; }
+.arch-layer-body p { margin: 2px 0 0; color: var(--text-2); font-size: 13px; font-weight: 300; }
+.arch-layer-from { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; }
+.arch-layer-from .from-label { font-size: 11px; color: var(--text-3); text-transform: uppercase; letter-spacing: .04em; }
+.arch-layer[data-layer="planning"] .ico { background: color-mix(in srgb, var(--tw-violet) 18%, transparent); color: var(--tw-violet); }
+.arch-layer[data-layer="masterdata"] .ico { background: color-mix(in srgb, var(--tw-teal) 18%, transparent); color: var(--tw-teal); }
+.arch-notes { margin: 12px 0 0; padding-left: 18px; color: var(--text-2); font-size: 13px; }
+.arch-notes li + li { margin-top: 3px; }
+.chart .axis-label.special { font-style: italic; fill: var(--text-3); }
+.tooltip .mono { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 12px; color: var(--text-3); }
+
+/* Decommission candidates */
+.card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+.card-actions { display: flex; gap: 6px; }
+#decom-card .table-wrap { max-height: 520px; overflow-y: auto; }
+.card-head > div:first-child { flex: 1 1 360px; }
+#decom-table td:nth-child(3) { min-width: 240px; }
+#decom-table td:nth-child(4) { min-width: 200px; }
+.decom-obj { min-width: 220px; }
+.decom-obj .mono { margin-top: 2px; overflow-wrap: anywhere; }
+.decom-obj .desc { color: var(--text-3); font-size: 12px; margin-top: 2px; }
+.evidence { margin: 0; padding-left: 16px; color: var(--text-2); }
+.evidence li + li { margin-top: 2px; }
+.evidence.check li::marker { color: var(--serious); }
+.muted { color: var(--text-3); font-weight: 300; }
+
 /* Findings */
 .findings { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 10px; }
 .finding { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 12px; align-items: start; padding: 12px 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); }
@@ -258,6 +303,9 @@ table.data .mono { font-family: ui-monospace, "Cascadia Code", Consolas, monospa
   .grid-2 { grid-template-columns: minmax(0, 1fr); }
   .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .finding { grid-template-columns: minmax(0, 1fr); }
+  .arch-layer { grid-template-columns: minmax(0, 1fr); gap: 6px; }
+  .arch-layer-from { align-items: flex-start; }
+  .arch-stats { align-items: flex-start; }
   h1 { font-size: 22px; }
   .brand { gap: 12px; }
   .brand-logo { padding-right: 12px; }

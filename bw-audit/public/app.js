@@ -9,7 +9,7 @@ const fmt = new Intl.NumberFormat('en');
 const TYPE_LABEL = {
   ADSO: 'aDSO', ODSO: 'Classic DSO', CUBE: 'InfoCube', MPRO: 'MultiProvider', HCPR: 'CompositeProvider',
   TRFN: 'Transformation', DTPA: 'DTP', RSPC: 'Process chain', QUERY: 'Query', VARIABLE: 'Variable',
-  AFO: 'AfO workbook', ALVL: 'Aggregation level', LSYS: 'Source system',
+  AFO: 'AfO workbook', ALVL: 'Aggregation level', LSYS: 'Source system', IOBJ: 'Master data',
 };
 const SEVERITY = {
   critical: { label: 'Critical', icon: '!' },
@@ -28,7 +28,8 @@ const state = {
   scope: 'custom',
   tab: 'objects',
   sort: { key: 'difficulty', dir: 'desc' },
-  filters: { search: '', category: '', type: '', min: 1, ids: null, idsLabel: '' },
+  filters: { search: '', domain: '', category: '', type: '', min: 1, ids: null, idsLabel: '' },
+  archDomain: null,
   expanded: new Set(),
   chatEnabled: false,
   sessionId: null,
@@ -110,8 +111,10 @@ function render() {
     sys.database, `audited ${new Date(a.generatedAt).toLocaleString()}`, `target ${a.target?.label || 'Generic platform'}`,
   ].filter(Boolean).join(' · ');
   renderKpis();
-  renderCategoryChart();
+  renderDomainChart();
   renderDistributionChart();
+  renderArchitecture();
+  renderDecommission();
   renderFindings();
   renderFilters();
   renderObjects();
@@ -154,41 +157,121 @@ function colPath(x, w, y0, y1, r = 4) {
   return `M${x},${y0}V${y1 + rr}Q${x},${y1} ${x + rr},${y1}H${x + w - rr}Q${x + w},${y1} ${x + w},${y1 + rr}V${y0}Z`;
 }
 
-function renderCategoryChart() {
-  const cats = summary().byCategory;
-  const el = $('#chart-categories');
+function domainLabel(key) {
+  return state.audit.domains?.[key]?.label || key || '';
+}
+
+const clip = (text, n) => (text.length > n ? `${text.slice(0, n - 1)}…` : text);
+
+function filterDomain(key) {
+  state.filters.domain = key;
+  state.filters.ids = null;
+  if (state.audit.architecture) { state.archDomain = key; renderArchitecture(); }
+  switchTab('objects');
+  renderFilters();
+  renderObjects();
+  scrollToTable();
+}
+
+function renderDomainChart() {
+  const el = $('#chart-domains');
+  const doms = summary().byDomain;
+  if (!doms) {
+    el.innerHTML = '<p class="card-sub">This snapshot has no domain data yet. Run the audit again to group the objects by top-level InfoArea.</p>';
+    return;
+  }
+  if (!doms.length) { el.innerHTML = '<p class="card-sub">No objects in scope.</p>'; return; }
   const W = Math.max(300, Math.round(el.clientWidth || 560));
-  const labelW = W < 420 ? 128 : 170; const right = 78; const rowH = 34; const barH = 18; const top = 8;
-  const H = top + cats.length * rowH + 22;
+  const labelW = W < 420 ? 128 : 190; const right = 78; const rowH = 30; const barH = 16; const top = 8;
+  const maxChars = Math.floor((labelW - 14) / 6.6);
+  const H = top + doms.length * rowH + 22;
   const x = (v) => labelW + ((W - labelW - right) * v) / 5;
-  let svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Average difficulty by area">`;
+  let svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Average difficulty by domain">`;
   for (let t = 0; t <= 5; t++) {
     svg += `<line class="gridline" x1="${x(t)}" x2="${x(t)}" y1="${top - 4}" y2="${H - 20}"/>`;
     svg += `<text class="tick" x="${x(t)}" y="${H - 6}" text-anchor="middle">${t}</text>`;
   }
   svg += '<g class="bars">';
-  cats.forEach((c, i) => {
+  doms.forEach((d, i) => {
     const y = top + i * rowH + (rowH - barH) / 2;
     svg += `<g class="bar-g" data-i="${i}">`;
-    svg += `<text class="axis-label" x="${labelW - 10}" y="${y + barH / 2 + 4}" text-anchor="end">${esc(c.label)}</text>`;
-    if (c.count) {
-      svg += `<path class="mark" d="${hbarPath(x(0), x(c.average), y, barH)}" fill="var(--bar)"/>`;
-      svg += `<text class="value-label" x="${x(c.average) + 8}" y="${y + barH / 2 + 4}">${c.average.toFixed(1)}</text>`;
-      svg += `<text class="tick" x="${x(c.average) + 34}" y="${y + barH / 2 + 4}">${c.count} obj.</text>`;
-    } else {
-      svg += `<text class="tick" x="${x(0) + 6}" y="${y + barH / 2 + 4}">no objects in scope</text>`;
-    }
+    svg += `<text class="axis-label${d.special ? ' special' : ''}" x="${labelW - 10}" y="${y + barH / 2 + 4}" text-anchor="end">${esc(clip(d.label, maxChars))}</text>`;
+    svg += `<path class="mark" d="${hbarPath(x(0), x(d.average), y, barH)}" fill="${d.special ? 'var(--bar-muted)' : 'var(--bar)'}"/>`;
+    svg += `<text class="value-label" x="${x(d.average) + 8}" y="${y + barH / 2 + 4}">${d.average.toFixed(1)}</text>`;
+    svg += `<text class="tick" x="${x(d.average) + 34}" y="${y + barH / 2 + 4}">${d.count} obj.</text>`;
     svg += `<rect class="hit" x="0" y="${top + i * rowH}" width="${W}" height="${rowH}"/>`;
     svg += '</g>';
   });
   svg += '</g></svg>';
   el.innerHTML = svg;
   wireHover(el, '.bar-g', (g) => {
-    const c = cats[g.dataset.i];
-    return c.count
-      ? `<strong>${esc(c.label)}</strong>Average difficulty ${c.average.toFixed(1)}<br>${c.count} object(s), ${c.high} at 4 or 5`
-      : `<strong>${esc(c.label)}</strong>No objects in scope`;
-  }, (g) => { state.filters.category = summary().byCategory[g.dataset.i].key; state.filters.ids = null; switchTab('objects'); renderFilters(); renderObjects(); scrollToTable(); });
+    const d = doms[g.dataset.i];
+    const areas = state.audit.domains?.[d.key]?.areas || [];
+    return `<strong>${esc(d.label)}</strong>${d.special ? '' : `<span class="mono">${esc(d.key)}</span>${areas.length > 1 ? ` · ${areas.length} InfoAreas` : ''}<br>`}Average difficulty ${d.average.toFixed(1)}<br>${d.count} object(s), ${d.high} at 4 or 5`;
+  }, (g) => filterDomain(doms[g.dataset.i].key));
+}
+
+// ---------------------------------------------------------------- target architecture
+
+function typePlural(type, n) {
+  const label = TYPE_LABEL[type] || type;
+  if (n === 1 || type === 'IOBJ') return label;
+  return label.endsWith('y') ? `${label.slice(0, -1)}ies` : `${label}s`;
+}
+
+const LAYER_ICON ={ ingest: '⇣', integration: '⚙', masterdata: '◇', marts: '▦', semantic: '◔', planning: '✎', orchestration: '↻' };
+
+function renderArchitecture() {
+  const card = $('#architecture-card');
+  const arch = state.audit.architecture;
+  card.hidden = !arch;
+  if (!arch) return;
+  const doms = arch[state.scope === 'all' ? 'all' : 'custom'];
+  $('#architecture-title').textContent = `Target architecture on ${arch.target.label}`;
+  $('#architecture-sub').textContent = 'One proposal per domain: where each BW object lands on the target. Click a layer\'s objects to list them below.';
+  if (!doms.length) { $('#architecture-domains').innerHTML = ''; $('#architecture').innerHTML = '<p class="card-sub">No objects in scope.</p>'; return; }
+  if (!doms.some((d) => d.key === state.archDomain)) state.archDomain = doms[0].key;
+  $('#architecture-domains').innerHTML = doms.map((d) => `
+    <button type="button" role="tab" data-domain="${esc(d.key)}" aria-selected="${d.key === state.archDomain}" class="${d.special ? 'special' : ''}" title="${esc(d.special ? d.label : `${d.label} (${d.key})`)}">
+      ${esc(d.label)} <span class="count">${d.count}</span>
+    </button>`).join('');
+  $$('#architecture-domains button').forEach((b) => b.addEventListener('click', () => { state.archDomain = b.dataset.domain; renderArchitecture(); }));
+  const d = doms.find((x) => x.key === state.archDomain);
+  $('#architecture').innerHTML = `
+    <div class="arch-head">
+      <div>
+        <h3>${esc(d.label)}${d.special ? '' : ` <span class="mono key">${esc(d.key)}</span>`}</h3>
+        <p>${esc(d.container)}</p>
+      </div>
+      <div class="arch-stats">
+        <span>${difficultyCell(Math.round(d.average))}</span>
+        <span class="card-sub">${d.count} object(s), average ${d.average.toFixed(1)}</span>
+        <div class="arch-actions">
+          <button class="btn small" data-arch-list>List objects</button>
+          <button class="btn small primary" data-arch-ask>Ask Claude</button>
+        </div>
+      </div>
+    </div>
+    <ol class="arch-layers">${d.layers.map((l, i) => `
+      <li class="arch-layer" data-layer="${esc(l.key)}">
+        <div class="arch-layer-name"><span class="ico" aria-hidden="true">${LAYER_ICON[l.key] || '•'}</span>${esc(l.label)}</div>
+        <div class="arch-layer-body">
+          <strong>${esc(l.component)}</strong>
+          ${l.detail ? `<p>${esc(l.detail)}</p>` : ''}
+        </div>
+        <div class="arch-layer-from">
+          <span class="from-label">from BW</span>
+          <button class="chip" data-layer-i="${i}" title="List these objects">${l.types.map((t) => `${t.count} ${esc(typePlural(t.type, t.count))}`).join(' · ')}</button>
+        </div>
+      </li>`).join('')}
+    </ol>
+    ${d.notes.length ? `<ul class="arch-notes">${d.notes.map((n) => `<li>${esc(n)}</li>`).join('')}</ul>` : ''}`;
+  $$('#architecture [data-layer-i]').forEach((b) => b.addEventListener('click', () => {
+    const l = d.layers[b.dataset.layerI];
+    focusObjects(l.ids, `${d.label} · ${l.label}`);
+  }));
+  $('#architecture [data-arch-list]').addEventListener('click', () => filterDomain(d.key));
+  $('#architecture [data-arch-ask]').addEventListener('click', () => askClaude(`Domain "${d.label}" (${d.special ? d.key : `top-level InfoArea ${d.key}`}, ${d.count} object(s)). The audit proposes this target architecture on ${arch.target.label}: ${d.container} ${d.layers.map((l) => `${l.label}: ${l.component} (${l.types.map((t) => `${t.count} ${t.type}`).join(', ')})`).join('; ')}. Check it against the objects of the domain in BW, challenge it, and propose the migration waves for this domain.`));
 }
 
 function renderDistributionChart() {
@@ -285,13 +368,107 @@ function renderFindings() {
   }));
 }
 
+// ---------------------------------------------------------------- decommission candidates
+
+const DECOM_FLAGS = ['never loaded', 'never run', 'inactive'];
+const isDecom = (o) => o.flags.some((f) => DECOM_FLAGS.includes(f));
+const flowText = (f) => (f ? `${f.source.type} ${f.source.name} → ${f.target.type} ${f.target.name}` : '');
+const sameFlow = (a, b) => a && b && a.source.name === b.source.name && a.target.type === b.target.type
+  && (a.target.name.startsWith(b.target.name) || b.target.name.startsWith(a.target.name));
+
+/** Why an object is a candidate, and what to check before dropping it, from the snapshot. */
+function decomEvidence(o) {
+  const objs = state.audit.objects;
+  const why = [];
+  const check = [];
+  const d = o.details || {};
+  if (o.flags.includes('inactive')) {
+    const what = {
+      TRFN: 'it cannot be executed', DTPA: 'it cannot load', HCPR: 'queries cannot run on it', ADSO: 'it cannot be loaded or reported on',
+      QUERY: 'it cannot be executed', RSPC: 'it cannot be scheduled',
+    }[o.type] || 'it cannot be used';
+    why.push(`Inactive: never activated, or changed and not re-activated, so ${what}.`);
+    if (o.type === 'TRFN' || o.type === 'DTPA') {
+      const active = objs.filter((x) => x.type === o.type && x.id !== o.id && x.status === 'active' && sameFlow(x.details?.flow, d.flow));
+      if (active.length) why.push(`Superseded: ${active.length === 1 ? `an active ${TYPE_LABEL[o.type]}` : `${active.length} active ${TYPE_LABEL[o.type]}s`} cover${active.length === 1 ? 's' : ''} the same flow (${active.map((x) => x.name).join(', ')}).`);
+      else check.push('No active version covers this flow: confirm the flow itself is no longer needed.');
+    }
+  }
+  if (o.flags.includes('never loaded')) {
+    why.push('No load request in its history (never loaded, or the requests have been deleted).');
+  }
+  if (o.flags.includes('never run')) {
+    why.push('No run in the process chain log.');
+    const loads = (d.steps || []).filter((st) => st.processType === 'DTP_LOAD').length;
+    if (loads) check.push(`It has ${loads} DTP load step(s): check whether the loads run another way (manually or from another chain).`);
+  }
+  // Dependencies that would break, or confirm, the removal.
+  if (o.type === 'DTPA') {
+    const chains = objs.filter((c) => c.type === 'RSPC' && (c.details?.steps || []).some((st) => st.variant === o.name));
+    if (chains.length) check.push(`Step of process chain ${chains.map((c) => c.name).join(', ')}: remove it from the chain too.`);
+  }
+  if (['HCPR', 'CUBE', 'ODSO', 'MPRO', 'ADSO'].includes(o.type)) {
+    const queries = objs.filter((q) => q.type === 'QUERY' && q.details?.provider === o.name);
+    if (queries.length) check.push(`${queries.length} query/queries defined on it (${queries.slice(0, 3).map((q) => q.name).join(', ')}${queries.length > 3 ? ', …' : ''}).`);
+    const users = objs.filter((m) => (m.type === 'MPRO' && (m.details?.parts || []).some((p) => p.name === o.name))
+      || (m.type === 'HCPR' && (m.details?.inputProviders || []).some((p) => p.split(' ')[1] === o.name)));
+    if (users.length) check.push(`Part of ${users.map((m) => `${TYPE_LABEL[m.type]} ${m.name}`).join(', ')}.`);
+    const feeds = objs.filter((t) => t.type === 'TRFN' && t.status === 'active' && t.details?.flow?.target?.name === o.name);
+    if (feeds.length) check.push(`${feeds.length} active transformation(s) still load it.`);
+  }
+  return { why, check };
+}
+
+function decomCandidates() {
+  return state.audit.objects.filter((o) => o.difficulty && inScope(o) && isDecom(o))
+    .sort((a, b) => domainLabel(a.domain).localeCompare(domainLabel(b.domain)) || a.type.localeCompare(b.type) || shortName(a).localeCompare(shortName(b)));
+}
+
+function renderDecommission() {
+  const list = decomCandidates();
+  $('#decom-title').textContent = `Decommission candidates · ${fmt.format(list.length)}`;
+  $('#decom-list').disabled = !list.length;
+  $('#decom-ask').disabled = !list.length;
+  if (!list.length) {
+    $('#decom-table').innerHTML = '<tbody><tr><td>No decommission candidates in this scope.</td></tr></tbody>';
+    $('#decom-note').textContent = '';
+    return;
+  }
+  const showOrigin = state.scope === 'all';
+  const rows = list.map((o) => ({ o, e: decomEvidence(o) }));
+  $('#decom-table').innerHTML = `<thead><tr><th>Object</th><th>Domain</th><th>Why it is a candidate</th><th>Check before removing</th>${showOrigin ? '<th>Origin</th>' : ''}</tr></thead><tbody>${
+    rows.map(({ o, e }) => {
+      const desc = (o.type === 'TRFN' || o.type === 'DTPA') ? (flowText(o.details.flow) || o.description) : o.description;
+      return `<tr class="row" data-id="${esc(o.id)}" title="Show in the objects table">
+        <td class="decom-obj">
+          <div>${esc(TYPE_LABEL[o.type] || o.type)} ${o.flags.filter((f) => DECOM_FLAGS.includes(f)).map((f) => `<span class="flag">${esc(f)}</span>`).join('')}</div>
+          <div class="mono">${esc(o.name)}</div>
+          ${desc ? `<div class="desc">${esc(desc)}</div>` : ''}
+        </td>
+        <td title="${esc(o.domainVia || '')}">${esc(domainLabel(o.domain))}</td>
+        <td><ul class="evidence">${e.why.map((w) => `<li>${esc(w)}</li>`).join('')}</ul></td>
+        <td>${e.check.length ? `<ul class="evidence check">${e.check.map((w) => `<li>${esc(w)}</li>`).join('')}</ul>` : '<span class="muted">No dependency found in the audit</span>'}</td>
+        ${showOrigin ? `<td>${o.origin === 'sap' ? 'SAP content' : 'Customer'}</td>` : ''}
+      </tr>`;
+    }).join('')}</tbody>`;
+  const blocked = rows.filter((r) => r.e.check.length).length;
+  $('#decom-note').textContent = `${fmt.format(list.length - blocked)} with no dependency found in the audit, ${fmt.format(blocked)} with something to check first. Click a row for its score and details.`;
+  $$('#decom-table tr.row').forEach((r) => r.addEventListener('click', () => { state.expanded.add(r.dataset.id); focusObjects([r.dataset.id], r.querySelector('.mono').textContent); }));
+}
+
+$('#decom-list').addEventListener('click', () => focusObjects(decomCandidates().map((o) => o.id), 'Decommission candidates'));
+$('#decom-ask').addEventListener('click', () => {
+  const list = decomCandidates();
+  askClaude(`Decommission candidates (${list.length}): ${list.slice(0, 30).map((o) => `${o.type} ${o.name} [${o.flags.filter((f) => DECOM_FLAGS.includes(f)).join(', ')}]`).join('; ')}${list.length > 30 ? '; …' : ''}. Check each in BW (where-used, last changes, load history) and tell me which can safely be left out of the migration and which need a decision from the business.`);
+});
+
 function shortName(o) {
   if (o.type === 'TRFN' && o.details.flow) return `${o.details.flow.source.name} → ${o.details.flow.target.name}`;
   return o.name;
 }
 
 function focusObjects(ids, label) {
-  state.filters = { search: '', category: '', type: '', min: 1, ids: new Set(ids), idsLabel: label };
+  state.filters = { search: '', domain: '', category: '', type: '', min: 1, ids: new Set(ids), idsLabel: label };
   switchTab('objects');
   renderFilters();
   renderObjects();
@@ -302,6 +479,10 @@ function scrollToTable() { $('.tabs').scrollIntoView({ behavior: 'smooth', block
 function renderFilters() {
   const objs = state.audit.objects.filter((o) => o.difficulty && inScope(o));
   const cats = state.audit.categories;
+  const doms = summary().byDomain || [];
+  $('#f-domain').hidden = !doms.length;
+  $('#f-domain').innerHTML = '<option value="">All domains</option>' + doms
+    .map((d) => `<option value="${esc(d.key)}"${state.filters.domain === d.key ? ' selected' : ''}>${esc(d.label)}${d.special ? '' : ` (${esc(d.key)})`}</option>`).join('');
   $('#f-category').innerHTML = '<option value="">All areas</option>' + Object.entries(cats)
     .map(([k, v]) => `<option value="${k}"${state.filters.category === k ? ' selected' : ''}>${esc(v.label)}</option>`).join('');
   const types = [...new Set(objs.map((o) => o.type))].sort();
@@ -322,12 +503,13 @@ function filteredObjects() {
   const q = f.search.trim().toLowerCase();
   let list = state.audit.objects.filter((o) => o.difficulty && inScope(o));
   if (f.ids) list = list.filter((o) => f.ids.has(o.id));
+  if (f.domain) list = list.filter((o) => o.domain === f.domain);
   if (f.category) list = list.filter((o) => o.category === f.category);
   if (f.type) list = list.filter((o) => o.type === f.type);
   if (f.min > 1) list = list.filter((o) => o.difficulty >= f.min);
   if (q) list = list.filter((o) => `${o.name} ${o.description} ${shortName(o)}`.toLowerCase().includes(q));
   const { key, dir } = state.sort;
-  const val = (o) => key === 'name' ? shortName(o).toLowerCase() : key === 'type' ? o.type : key === 'category' ? o.category : o.difficulty;
+  const val = (o) => key === 'name' ? shortName(o).toLowerCase() : key === 'type' ? o.type : key === 'category' ? o.category : key === 'domain' ? domainLabel(o.domain).toLowerCase() : o.difficulty;
   list.sort((a, b) => {
     const va = val(a); const vb = val(b);
     const c = va < vb ? -1 : va > vb ? 1 : 0;
@@ -342,8 +524,8 @@ function renderObjects() {
   const cats = state.audit.categories;
   const showOrigin = state.scope === 'all';
   const th = (key, label) => `<th class="sortable" data-sort="${key}" aria-sort="${state.sort.key === key ? (state.sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}">${label}</th>`;
-  const cols = showOrigin ? 7 : 6;
-  let html = `<thead><tr>${th('difficulty', 'Difficulty')}${th('type', 'Type')}${th('name', 'Name')}<th>Description</th>${th('category', 'Area')}<th>Flags</th>${showOrigin ? '<th>Origin</th>' : ''}</tr></thead><tbody>`;
+  const cols = showOrigin ? 8 : 7;
+  let html = `<thead><tr>${th('difficulty', 'Difficulty')}${th('type', 'Type')}${th('name', 'Name')}<th>Description</th>${th('domain', 'Domain')}${th('category', 'Area')}<th>Flags</th>${showOrigin ? '<th>Origin</th>' : ''}</tr></thead><tbody>`;
   for (const o of list.slice(0, OBJECT_LIMIT)) {
     const open = state.expanded.has(o.id);
     html += `<tr class="row${open ? ' expanded' : ''}" data-id="${esc(o.id)}" aria-expanded="${open}">
@@ -351,6 +533,7 @@ function renderObjects() {
       <td>${esc(TYPE_LABEL[o.type] || o.type)}</td>
       <td class="mono">${esc(shortName(o))}</td>
       <td>${esc(o.type === 'TRFN' ? o.name : o.description)}</td>
+      <td title="${esc(o.domainVia || '')}">${esc(domainLabel(o.domain))}</td>
       <td>${esc(cats[o.category]?.label || '')}</td>
       <td>${o.flags.map((f) => `<span class="flag">${esc(f)}</span>`).join('')}</td>
       ${showOrigin ? `<td>${o.origin === 'sap' ? 'SAP content' : 'Customer'}</td>` : ''}
@@ -411,7 +594,16 @@ function objectDetail(o) {
     add('Queries', d.queries); add('Planning', d.planning); add('Last changed', d.lastChanged && `${d.lastChanged} by ${d.changedBy}`);
   } else if (o.type === 'LSYS') {
     add('Type', d.sourceSystemType);
+  } else if (o.type === 'IOBJ') {
+    add('InfoArea', d.infoArea); add('Attributes', d.attributes);
+    add('Time-dependent', d.timeDependent ? 'yes' : null); add('Hierarchies', d.hierarchies ? 'yes' : null);
+    add('Used in providers', Object.entries(d.usage || {}).map(([k, n]) => `${domainLabel(k)} ${n}`));
+    const loads = state.audit.flows.filter((f) => f.target.type === 'IOBJ' && o.name.startsWith(f.target.name)).length;
+    add('Loading transformations', loads || null);
+  } else if (o.type === 'ALVL') {
+    add('InfoProvider', d.provider); add('InfoArea', d.infoArea);
   }
+  if (o.domain) add('Domain', `${domainLabel(o.domain)}${o.domainVia ? `, ${o.domainVia}` : ''}`);
   return `<div><strong>Why ${o.difficulty}/5</strong><ul>${o.reasons.map((r) => `<li>${esc(r)}</li>`).join('')}</ul>
     ${kv.length ? `<div class="kv">${kv.join(' · ')}</div>` : ''}
     <div style="margin-top:10px"><button class="btn small primary" data-ask="${esc(o.id)}">Ask Claude about this object</button></div></div>`;
@@ -653,6 +845,7 @@ $$('.segmented button').forEach((b) => b.addEventListener('click', () => {
 }));
 $$('.tabs button').forEach((b) => b.addEventListener('click', () => switchTab(b.dataset.tab)));
 $('#f-search').addEventListener('input', (e) => { state.filters.search = e.target.value; renderObjects(); });
+$('#f-domain').addEventListener('change', (e) => { state.filters.domain = e.target.value; renderObjects(); });
 $('#f-category').addEventListener('change', (e) => { state.filters.category = e.target.value; renderObjects(); });
 $('#f-type').addEventListener('change', (e) => { state.filters.type = e.target.value; renderObjects(); });
 $('#f-min').addEventListener('change', (e) => { state.filters.min = Number(e.target.value); renderObjects(); });
@@ -660,7 +853,7 @@ $('#run-audit').addEventListener('click', runAudit);
 let resizeTimer;
 window.addEventListener('resize', () => {
   clearTimeout(resizeTimer);
-  resizeTimer = setTimeout(() => { if (state.audit) { renderCategoryChart(); renderDistributionChart(); } }, 150);
+  resizeTimer = setTimeout(() => { if (state.audit) { renderDomainChart(); renderDistributionChart(); } }, 150);
 });
 
 $('#chat-form').addEventListener('submit', (e) => {

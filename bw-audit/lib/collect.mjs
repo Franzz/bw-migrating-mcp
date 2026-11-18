@@ -6,6 +6,8 @@ import { callTool } from './mcp.mjs';
 import * as P from './parse.mjs';
 import { scoreObject, summarize, CATEGORIES, LEVELS } from './score.mjs';
 import { getTarget, targetList } from './targets.mjs';
+import { assignDomains } from './domains.mjs';
+import { buildArchitecture } from './architecture.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 export const DATA_DIR = path.resolve(here, '..', 'data');
@@ -19,6 +21,7 @@ const TYPE_LABELS = {
   RKF: 'Restricted key figures', FILTER: 'Filters', ALVL: 'Aggregation levels', RSPC: 'Process chains',
   DEST: 'Open Hub destinations', LSYS: 'Source systems', AFO: 'AfO workbooks',
 };
+const MASTER_DATA_LABEL = 'Master data InfoObjects (loaded)';
 
 async function pool(items, limit, fn) {
   const results = new Array(items.length);
@@ -82,6 +85,18 @@ export async function runAudit({ onProgress = () => {}, concurrency = 4, target:
     return /No analysis process/i.test(t) ? [] : t.split('\n').filter((l) => /^\s+\S+\s{2,}/.test(l)).map((l) => l.trim().split(/\s{2,}/)[0]);
   }, []);
 
+  progress('inventory', 'Reading the InfoArea tree', 20);
+  const areas = await pool(search.AREA, concurrency, (a) => safe(`area ${a.name}`, async () => {
+    const r = JSON.parse(await callTool('bw_read', { type: 'area', name: a.name }));
+    return { name: a.name, label: r.label || a.description || a.name, parent: r.parent_area || null };
+  }, { name: a.name, label: a.description || a.name, parent: null }));
+
+  // InfoSources are not scored, but their InfoArea places the flows that end in them.
+  const infoSources = (await pool(search.TRCS, concurrency, (t) => safe(`trcs ${t.name}`, async () => {
+    const r = JSON.parse(await callTool('bw_read', { type: 'trcs', name: t.name }));
+    return { name: t.name, infoArea: r.info_area || null };
+  }, null))).filter(Boolean);
+
   // ---------- objects ----------
   const objects = [];
   const add = (o) => {
@@ -108,6 +123,9 @@ export async function runAudit({ onProgress = () => {}, concurrency = 4, target:
     detailJobs.push(async () => {
       const text = await callTool('bw_read', { type: 'adso', name: s.name });
       Object.assign(o.details, P.parseAdso(text));
+      // The text output names fields, not the InfoObjects behind them: read those from the XML.
+      o.details.infoObjects = await safe(`adso raw ${s.name}`, async () =>
+        P.adsoInfoObjects(await callTool('bw_read', { type: 'adso', name: s.name, format: 'raw' })), []);
       if (o.details.createdBy === 'SAP') o.origin = 'sap';
       // No load history for aDSOs: on this release their requests are not in the
       // classic request store the metadata read covers, so "no requests" is not evidence.
@@ -130,6 +148,7 @@ export async function runAudit({ onProgress = () => {}, concurrency = 4, target:
         nodeType: h.view_node?.type || null,
         inputs: h.inputs?.length || 0,
         inputProviders: (h.inputs || []).map((x) => `${x.provider_type} ${x.name}`),
+        infoObjects: [...new Set((h.fields?.list || []).filter((f) => !f.is_key_figure && f.info_object_name).map((f) => f.info_object_name))],
         fields: h.fields?.total || 0,
         join: h.join_condition ? `${h.join_condition.join_type} (${h.join_condition.cardinality})` : null,
         temporalJoin: !!h.temporal_join,
@@ -147,8 +166,8 @@ export async function runAudit({ onProgress = () => {}, concurrency = 4, target:
       Object.assign(o.details, t);
       if (t.source && t.target) {
         o.details.flow = {
-          source: { type: t.source.type, name: t.source.name, sourceSystem: t.source.extra || o.details.flow?.source?.sourceSystem || null },
-          target: { type: t.target.type, name: t.target.name },
+          source: { type: t.source.type, name: P.iobjName(t.source.name), sourceSystem: t.source.extra || o.details.flow?.source?.sourceSystem || null },
+          target: { type: t.target.type, name: P.iobjName(t.target.name) },
         };
       }
     });
@@ -197,7 +216,12 @@ export async function runAudit({ onProgress = () => {}, concurrency = 4, target:
   for (const w of workbooks) {
     add({ type: 'AFO', name: w.name, description: w.description, origin: w.changedBy === 'SAP' || P.isSapName(w.name) ? 'sap' : 'custom', details: w });
   }
-  for (const s of search.ALVL) add({ type: 'ALVL', name: s.name, description: s.description, status: s.status });
+  for (const s of search.ALVL) {
+    const o = add({ type: 'ALVL', name: s.name, description: s.description, status: s.status });
+    detailJobs.push(async () => {
+      Object.assign(o.details, P.parseAggregationLevel(await callTool('bw_read', { type: 'alvl', name: s.name })));
+    });
+  }
 
   progress('details', `Reading ${detailJobs.length} object definitions`, 22);
   let done = 0;
@@ -208,6 +232,26 @@ export async function runAudit({ onProgress = () => {}, concurrency = 4, target:
       progress('details', `Read ${done} of ${detailJobs.length} object definitions`, 22 + Math.round((done / detailJobs.length) * 70));
     }
   });
+
+  // ---------- master data ----------
+  // InfoObjects that a transformation loads or reads carry master data handled in BW:
+  // they become objects of their own, assigned to the domain that uses them most.
+  const iobjSearch = new Map(search.IOBJ.map((x) => [x.name, x]));
+  const mdNames = new Set();
+  for (const o of objects.filter((x) => x.type === 'TRFN' && x.details.flow)) {
+    for (const ep of [o.details.flow.source, o.details.flow.target]) {
+      if (ep.type !== 'IOBJ') continue;
+      const name = iobjSearch.has(ep.name) ? ep.name : [...iobjSearch.keys()].find((k) => k.startsWith(ep.name));
+      if (name) mdNames.add(name);
+    }
+  }
+  progress('details', `Reading ${mdNames.size} master data InfoObject(s)`, 93);
+  await pool([...mdNames], concurrency, (name) => safe(`iobj ${name}`, async () => {
+    const s = iobjSearch.get(name);
+    const o = add({ type: 'IOBJ', name, description: s.description, status: s.status });
+    Object.assign(o.details, P.parseInfoObject(await callTool('bw_read', { type: 'iobj', name })));
+    if (o.details.createdBy === 'SAP') o.origin = 'sap';
+  }));
 
   // ---------- derived flags ----------
   const byId = new Map(objects.map((o) => [o.id, o]));
@@ -222,6 +266,8 @@ export async function runAudit({ onProgress = () => {}, concurrency = 4, target:
     if (['CUBE', 'ODSO'].includes(o.type) && !virtual && o.details.requests === 0) o.flags.push('never loaded');
   }
 
+  // Domains first: the master data score uses how many domains share an InfoObject.
+  const { domains } = assignDomains(objects, areas, { infoSources });
   const scored = objects.map((o) => scoreObject(o, target));
 
   // ---------- lineage ----------
@@ -251,6 +297,8 @@ export async function runAudit({ onProgress = () => {}, concurrency = 4, target:
   for (const type of ['ADSO', 'ODSO', 'CUBE', 'MPRO', 'HCPR', 'TRFN', 'DTPA', 'RSPC', 'QUERY', 'VARIABLE', 'AFO', 'ALVL', 'LSYS']) {
     count(type, scored.filter((o) => o.type === type));
   }
+  count('IOBJ_MD', scored.filter((o) => o.type === 'IOBJ'));
+  inventory.IOBJ_MD.label = MASTER_DATA_LABEL;
   for (const type of ['AREA', 'RSDS', 'TRCS', 'IOBJ', 'DEST']) {
     count(type, (search[type] || []).map((s) => ({ ...s, origin: P.isSapName(s.name) ? 'sap' : 'custom' })));
   }
@@ -260,17 +308,20 @@ export async function runAudit({ onProgress = () => {}, concurrency = 4, target:
   if (anpr.length) inventory.ANPR = { label: 'Analysis processes', total: anpr.length, custom: anpr.length, sap: 0, inactive: 0 };
 
   const audit = {
-    version: 1,
+    version: 2,
     target: describeTarget(target),
     generatedAt: new Date().toISOString(),
     durationSec: Math.round((Date.now() - started) / 1000),
     system,
     levels: LEVELS,
     categories: CATEGORIES,
+    domains,
+    areas,
     inventory,
     objects: scored,
     flows,
-    summary: { custom: summarize(scored), all: summarize(scored, { includeSap: true }) },
+    summary: { custom: summarize(scored, { domains }), all: summarize(scored, { includeSap: true, domains }) },
+    architecture: buildArchitecture(scored, domains, target),
     findings: buildFindings(scored, system, target),
     errors,
   };
@@ -304,7 +355,8 @@ export function applyTarget(audit, targetKey) {
     target: describeTarget(target),
     objects,
     flows: audit.flows.map((fl) => ({ ...fl, difficulty: trfn.get(fl.transformation) ?? fl.difficulty })),
-    summary: { custom: summarize(objects), all: summarize(objects, { includeSap: true }) },
+    summary: { custom: summarize(objects, { domains: audit.domains }), all: summarize(objects, { includeSap: true, domains: audit.domains }) },
+    architecture: buildArchitecture(objects, audit.domains, target),
     findings: buildFindings(objects, audit.system, target),
   };
 }

@@ -53,15 +53,37 @@
 
         <section class="grid-2">
           <article class="card">
-            <h2>Average difficulty by area</h2>
-            <p class="card-sub">1 = lift and shift, 5 = redesign</p>
-            <div id="chart-categories" class="chart"></div>
+            <h2>Average difficulty by domain</h2>
+            <p class="card-sub">Domains are the top-level InfoAreas. 1 = lift and shift, 5 = redesign. Click a domain to list its objects.</p>
+            <div id="chart-domains" class="chart"></div>
           </article>
           <article class="card">
             <h2>Objects by difficulty</h2>
             <p class="card-sub">Number of scored objects at each level</p>
             <div id="chart-distribution" class="chart"></div>
           </article>
+        </section>
+
+        <section class="card" id="architecture-card" hidden>
+          <h2 id="architecture-title">Target architecture</h2>
+          <p class="card-sub" id="architecture-sub"></p>
+          <div class="domain-picker" id="architecture-domains" role="tablist" aria-label="Domain"></div>
+          <div id="architecture"></div>
+        </section>
+
+        <section class="card" id="decom-card">
+          <div class="card-head">
+            <div>
+              <h2 id="decom-title">Decommission candidates</h2>
+              <p class="card-sub">Objects never loaded, never run or inactive, with the evidence for each. Confirm with the business before leaving them out of scope.</p>
+            </div>
+            <div class="card-actions">
+              <button type="button" class="btn small" id="decom-list">List in table</button>
+              <button type="button" class="btn small primary" id="decom-ask">Ask Claude</button>
+            </div>
+          </div>
+          <div class="table-wrap"><table class="data" id="decom-table"></table></div>
+          <p class="table-note" id="decom-note"></p>
         </section>
 
         <section class="card">
@@ -81,6 +103,7 @@
           <div class="tab-panel" data-panel="objects">
             <div class="filters">
               <input type="search" id="f-search" placeholder="Search name or description" aria-label="Search">
+              <select id="f-domain" aria-label="Domain"><option value="">All domains</option></select>
               <select id="f-category" aria-label="Area"><option value="">All areas</option></select>
               <select id="f-type" aria-label="Type"><option value="">All types</option></select>
               <select id="f-min" aria-label="Minimum difficulty">

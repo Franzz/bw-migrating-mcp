@@ -32,7 +32,10 @@ The app starts its own `bw-mcp` process through `../start-bw-mcp.mjs`, always wi
 |---|---|
 | System | `bw_find system_profile` |
 | Inventory | `bw_find search` per object type, `source_systems`, `afo_workbooks`, `RSPCLOG *` |
-| Providers | `bw_read adso` and `hcpr`, plus `metadata_tables` for CUBE, ODSO and MPRO (structure, parts, load history) |
+| Domains | `bw_read area` (parent InfoArea) for every InfoArea, `bw_read trcs` (InfoArea of each InfoSource) |
+| Providers | `bw_read adso` (text, plus `raw` for the InfoObjects behind the fields) and `hcpr`, plus `metadata_tables` for CUBE, ODSO and MPRO (structure, characteristics, parts, load history) |
+| Master data | `bw_read iobj` for each InfoObject a transformation loads or reads (texts, time dependency, hierarchies, attributes) |
+| Planning | `bw_read alvl` (InfoProvider and InfoArea of each aggregation level) |
 | Logic | `metadata_tables TRFN`: routines, ABAP code and rule types |
 | Orchestration | `metadata_tables RSPC`: steps |
 | Reporting | `bw_read query` and `variable` for customer objects |
@@ -43,9 +46,20 @@ Difficulty runs from 1 (lift and shift) to 5 (redesign). Each score lists its re
 
 - **Target.** The **Migration target** radio buttons pick the platform the scores are computed for: Generic platform (the platform-agnostic rules alone), Microsoft Fabric, Snowflake + dbt, SAP Datasphere or Google BigQuery. A target adds its own adjustments on top of the generic score, each listed as a reason prefixed with the target name, and can reword findings. The adjustments live in [lib/targets.mjs](lib/targets.mjs). Switching target re-scores the saved snapshot without reading BW again; the chat uses the selected target too. From the terminal: `npm run audit -- --target=fabric` (or `snowflake-dbt`, `datasphere`, `bigquery`).
 
+- **Domains.** A domain is a top-level InfoArea (the root of the InfoArea tree); sub-areas roll up into it. The **Average difficulty by domain** chart shows each domain; click one to list its objects in the table, which also has a **Domain** filter and column. Every object gets one domain, and its detail row says why:
+  - providers: their own InfoArea;
+  - transformations and DTPs: the domain of their target (an InfoSource is followed to the providers it feeds, else its own InfoArea), else their source;
+  - master data InfoObjects: the domain whose providers use the InfoObject most (ties go to its own InfoArea), else its own InfoArea. The transformations and DTPs that load it follow it into that domain;
+  - queries and aggregation levels: the domain of their InfoProvider, else their InfoArea;
+  - process chains: the domain most of their DTP steps load; AfO workbooks: the domain most of their queries belong to; variables: the domain of their reference InfoObject;
+  - source systems: the domain they feed, or **Cross-domain** when they feed several.
+
+  Objects with nothing to go on are **Unassigned**. SAP-delivered queries and variables are not read in detail, so most of them are unassigned when SAP content is included.
+- **Master data.** InfoObjects that a transformation loads or reads are scored as their own type (area **Master data**): a dimension table with texts, plus time dependency, hierarchies, many attributes, and use in several domains (a shared dimension).
+- **Target architecture.** With a target other than Generic platform, the **Target architecture** panel proposes, per domain, a container on the target (Fabric workspace, Snowflake database and dbt folder, Datasphere space, BigQuery datasets) and the layers the domain needs: ingestion, integration, master data, business layer, semantic and reporting, planning, orchestration. Each layer names the target component, explains how the BW objects map onto it, and lists those objects (click to filter the table). The proposals live in [lib/architecture.mjs](lib/architecture.mjs). The Generic platform has no architecture, so the panel is hidden.
 - **Index.** The complexity index (0–100) weights each area by importance and by its object count. The count is log-damped, so 300 queries don't outweigh 10 ABAP routines.
 - **SAP content.** SAP-delivered objects are excluded by default; use **Include SAP content** to add them. An object counts as SAP content if it uses the `0*` or `/XXX/` namespaces (but not `/BIC/`), or was created or changed by user `SAP`.
-- **Decommission candidates.** Objects flagged never loaded, never run or inactive.
+- **Decommission candidates.** Objects flagged never loaded, never run or inactive. The **Decommission candidates** section, before the key findings, lists each one with why it is a candidate (inactive, never loaded, never run, superseded by an active transformation or DTP for the same flow) and what to check before removing it (an active version missing, process chains that still use it, queries, MultiProviders or CompositeProviders built on it, active transformations that still load it).
 - **aDSO load history.** Not used. On this release aDSO requests are not in the request store the metadata read covers, so "no requests" is not evidence of an unused aDSO.
 
 ## Chat

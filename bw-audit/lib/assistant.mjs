@@ -4,13 +4,14 @@ export const AUDIT_TOOL = {
   name: 'audit_query',
   description:
     'Query the audit snapshot shown in the web interface: scored BW objects with their difficulty (1-5), ' +
-    'category, origin (custom or SAP content), flags and the reasons for the score. Use it before calling the ' +
+    'category, domain (top-level InfoArea), origin (custom or SAP content), flags and the reasons for the score. Use it before calling the ' +
     'live BW tools, to find which objects matter. Returns at most `limit` objects, hardest first.',
   input_schema: {
     type: 'object',
     properties: {
-      type: { type: 'string', description: 'Object type: ADSO, CUBE, ODSO, MPRO, HCPR, TRFN, DTPA, RSPC, QUERY, VARIABLE, AFO, ALVL, LSYS' },
-      category: { type: 'string', enum: ['storage', 'logic', 'extraction', 'orchestration', 'reporting', 'planning'] },
+      type: { type: 'string', description: 'Object type: ADSO, CUBE, ODSO, MPRO, HCPR, IOBJ (master data), TRFN, DTPA, RSPC, QUERY, VARIABLE, AFO, ALVL, LSYS' },
+      category: { type: 'string', enum: ['storage', 'masterdata', 'logic', 'extraction', 'orchestration', 'reporting', 'planning'] },
+      domain: { type: 'string', description: 'Domain key: a top-level InfoArea such as "/ERP/FMCO", or "~cross" (cross-domain) or "~unassigned"' },
       min_difficulty: { type: 'integer', minimum: 1, maximum: 5 },
       name_contains: { type: 'string', description: 'Case-insensitive part of the technical name or description' },
       include_sap: { type: 'boolean', description: 'Include SAP-delivered content (default false)' },
@@ -28,6 +29,7 @@ export function runAuditQuery(audit, input = {}) {
   if (!input.include_sap) items = items.filter((o) => o.origin !== 'sap');
   if (input.type) items = items.filter((o) => o.type === input.type.toUpperCase());
   if (input.category) items = items.filter((o) => o.category === input.category);
+  if (input.domain) items = items.filter((o) => o.domain === input.domain);
   if (input.min_difficulty) items = items.filter((o) => o.difficulty >= input.min_difficulty);
   if (input.flag) items = items.filter((o) => o.flags.includes(input.flag));
   if (input.name_contains) {
@@ -38,7 +40,7 @@ export function runAuditQuery(audit, input = {}) {
   const limit = input.limit || 50;
   const out = items.slice(0, limit).map((o) => ({
     type: o.type, name: o.name, description: o.description, status: o.status, origin: o.origin,
-    category: o.category, difficulty: o.difficulty, flags: o.flags, reasons: o.reasons,
+    category: o.category, domain: o.domain, domain_via: o.domainVia, difficulty: o.difficulty, flags: o.flags, reasons: o.reasons,
     ...(input.include_details ? { details: o.details } : {}),
   }));
   return JSON.stringify({ matched: items.length, returned: out.length, objects: out });
@@ -60,6 +62,11 @@ function auditDigest(audit) {
     `Complexity index, customer objects: ${s.custom.index}/100 (${s.custom.rating}), ${s.custom.objects} scored objects, ${s.custom.highDifficulty} with difficulty >= 4.`,
     `Complexity index including SAP content: ${s.all.index}/100 (${s.all.rating}), ${s.all.objects} objects.`,
     `Per category (customer scope): ${s.custom.byCategory.map((c) => `${c.label} ${c.count} objects avg ${c.average}`).join('; ')}`,
+    ...(s.custom.byDomain ? [`Per domain = top-level InfoArea (customer scope): ${s.custom.byDomain.map((d) => `${d.label} [${d.key}] ${d.count} objects avg ${d.average}`).join('; ')}`] : []),
+    ...(audit.architecture ? [
+      `Proposed target architecture per domain on ${audit.architecture.target.label} (customer scope):`,
+      ...audit.architecture.custom.map((d) => `- ${d.label} [${d.key}]: ${d.container} Layers: ${d.layers.map((l) => `${l.label} → ${l.component}`).join('; ')}`),
+    ] : []),
     'Findings:',
     ...audit.findings.map((f) => `- [${f.severity}] ${f.title}: ${f.objects.length} object(s). ${f.detail}`),
     'Hardest customer objects:',

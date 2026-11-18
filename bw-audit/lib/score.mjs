@@ -14,6 +14,7 @@ export const LEVELS = {
 
 export const CATEGORIES = {
   storage: { label: 'Storage & providers', weight: 1.0 },
+  masterdata: { label: 'Master data', weight: 0.8 },
   logic: { label: 'Transformation logic', weight: 1.5 },
   extraction: { label: 'Extraction & sources', weight: 1.2 },
   orchestration: { label: 'Orchestration', weight: 0.8 },
@@ -75,6 +76,17 @@ export function scoreHcpr(o) {
   if (d.temporalJoin) r.push({ text: 'Temporal join (time-dependent validity)', points: 1 });
   if ((d.inputs || 0) > 3) r.push({ text: `${d.inputs} inputs`, points: 0.5 });
   return result(2, r);
+}
+
+export function scoreMasterData(o) {
+  const d = o.details || {};
+  const r = [{ text: 'Master data InfoObject: becomes a dimension table (attributes) with its texts' }];
+  if (d.timeDependent) r.push({ text: 'Time-dependent attributes or texts: validity periods to keep (slowly changing dimension, type 2)', points: 1 });
+  if (d.hierarchies) r.push({ text: 'Hierarchies: parent-child hierarchy tables to rebuild and flatten for reporting', points: 1 });
+  if (d.attributes > 15) r.push({ text: `${d.attributes} attributes`, points: 0.5 });
+  const domains = Object.keys(d.usage || {}).length;
+  if (domains > 1) r.push({ text: `Used in ${domains} domains: build once as a shared, conformed dimension`, points: 0.5 });
+  return result(1.5, r);
 }
 
 export function scoreTransformation(o) {
@@ -174,6 +186,7 @@ const SCORERS = {
   ODSO: ['storage', scoreOdso],
   MPRO: ['storage', scoreMpro],
   HCPR: ['storage', scoreHcpr],
+  IOBJ: ['masterdata', scoreMasterData],
   TRFN: ['logic', scoreTransformation],
   DTPA: ['logic', scoreDtp],
   LSYS: ['extraction', scoreSourceSystem],
@@ -202,8 +215,24 @@ export function scoreObject(o, targetKey) {
   return { ...o, category: category2, difficulty: clamp(raw), reasons: [...base.reasons, ...extra.map((r) => r.text)] };
 }
 
+const average = (items) => (items.length ? Math.round((items.reduce((n, o) => n + o.difficulty, 0) / items.length) * 10) / 10 : 0);
+
+/** Average difficulty per domain (lib/domains.mjs), domains with objects only, largest first. */
+export function summarizeDomains(scope, domains = {}) {
+  const groups = new Map();
+  for (const o of scope) {
+    if (!o.domain) continue;
+    if (!groups.has(o.domain)) groups.set(o.domain, []);
+    groups.get(o.domain).push(o);
+  }
+  return [...groups.entries()].map(([key, items]) => ({
+    key, label: domains[key]?.label || key, special: Boolean(domains[key]?.special),
+    count: items.length, average: average(items), high: items.filter((o) => o.difficulty >= 4).length,
+  })).sort((a, b) => a.special - b.special || b.count - a.count || a.label.localeCompare(b.label));
+}
+
 /** Aggregate scored objects. inScope filters (e.g. custom only). */
-export function summarize(objects, { includeSap = false } = {}) {
+export function summarize(objects, { includeSap = false, domains } = {}) {
   const scope = objects.filter((o) => o.difficulty && (includeSap || o.origin !== 'sap'));
   const byCategory = {};
   for (const [key, meta] of Object.entries(CATEGORIES)) {
@@ -236,6 +265,7 @@ export function summarize(objects, { includeSap = false } = {}) {
     index, rating,
     highDifficulty: scope.filter((o) => o.difficulty >= 4).length,
     byCategory: Object.values(byCategory),
+    byDomain: summarizeDomains(scope, domains),
     distribution,
   };
 }
