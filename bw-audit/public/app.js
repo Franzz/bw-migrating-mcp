@@ -73,11 +73,10 @@ function currentTarget() {
 
 function renderTargets() {
   $('#target-options').innerHTML = state.targets.map((t) => `
-    <label class="target-option">
+    <label class="target-option" title="${esc(t.description)}">
       <input type="radio" name="target" value="${esc(t.key)}"${t.key === state.target ? ' checked' : ''}>
       <span>${esc(t.label)}</span>
     </label>`).join('');
-  $('#target-desc').textContent = currentTarget().description;
   $$('#target-options input').forEach((r) => r.addEventListener('change', () => r.checked && setTarget(r.value)));
 }
 
@@ -85,7 +84,6 @@ async function setTarget(key) {
   if (key === state.target) return;
   state.target = key;
   try { localStorage.setItem(TARGET_KEY, key); } catch { /* per-browser convenience only */ }
-  $('#target-desc').textContent = currentTarget().description;
   const data = await fetchAudit();
   if (state.target !== key) return; // a later click won
   state.audit = data.audit;
@@ -104,6 +102,7 @@ function render() {
   const a = state.audit;
   $('#empty').hidden = Boolean(a);
   $('#content').hidden = !a;
+  updateToc();
   if (!a) return;
   const sys = a.system;
   $('#system-line').textContent = [
@@ -122,6 +121,7 @@ function render() {
   renderChains();
   renderSources();
   renderInventory();
+  updateToc();
   $('#footnote').textContent = `Snapshot read in ${a.durationSec}s. ${a.errors.length ? `${a.errors.length} object(s) could not be read.` : 'Every object was read.'} ${a.target && a.target.key !== 'generic' ? `Scores come from fixed rules, adjusted for ${a.target.label}; each object lists the reasons.` : 'Scores come from fixed, platform-agnostic rules.'} Ask Claude to challenge any of them.`;
 }
 
@@ -659,6 +659,7 @@ function switchTab(tab) {
   state.tab = tab;
   $$('.tabs button').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === tab)));
   $$('.tab-panel').forEach((p) => { p.hidden = p.dataset.panel !== tab; });
+  $$('.toc [data-toc-tab]').forEach((l) => l.classList.toggle('active', l.dataset.tocTab === tab));
 }
 
 // ---------------------------------------------------------------- audit run
@@ -737,7 +738,70 @@ function setChatEnabled(on) {
   $('#chat-send').disabled = !on || state.chatBusy;
 }
 
-function openChat() { $('#chat').classList.add('open'); $('#chat-input').focus(); }
+// ---------------------------------------------------------------- table of contents
+
+// highlights the section that crosses the upper third of the page; at the bottom, the last one
+function spyToc() {
+  if (!state.audit) return;
+  const main = $('#main');
+  const links = $$('.toc [data-toc]').filter((l) => !l.parentElement.hidden);
+  const line = main.getBoundingClientRect().top + main.clientHeight / 3;
+  const atBottom = main.scrollTop + main.clientHeight >= main.scrollHeight - 4;
+  let current = links[0];
+  for (const l of links) if (atBottom || $('#' + l.dataset.toc).getBoundingClientRect().top <= line) current = l;
+  links.forEach((l) => l.classList.toggle('active', l === current));
+}
+
+let spyPending = false;
+$('#main').addEventListener('scroll', () => {
+  if (spyPending) return;
+  spyPending = true;
+  requestAnimationFrame(() => { spyPending = false; spyToc(); });
+}, { passive: true });
+
+function updateToc() {
+  const show = Boolean(state.audit);
+  $('#toc-sections').hidden = !show;
+  if (!show) return;
+  $$('.toc [data-toc]').forEach((l) => { l.parentElement.hidden = $('#' + l.dataset.toc).hidden; });
+  $$('.toc [data-toc-tab]').forEach((l) => l.classList.toggle('active', l.dataset.tocTab === state.tab));
+  spyToc();
+}
+
+$('#toc').addEventListener('click', (e) => {
+  const link = e.target.closest('a');
+  if (!link) return;
+  e.preventDefault();
+  if (link.dataset.tocTab) switchTab(link.dataset.tocTab);
+  const target = $(link.getAttribute('href'));
+  target?.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
+  history.replaceState(null, '', link.getAttribute('href'));
+});
+
+// ---------------------------------------------------------------- chat panel
+
+const CHAT_FOLD_KEY = 'bw-audit-chat-folded';
+const overlayChat = matchMedia('(max-width: 1100px)');
+
+function setChatFolded(folded) {
+  $('#layout').classList.toggle('chat-folded', folded);
+  try { localStorage.setItem(CHAT_FOLD_KEY, folded ? '1' : '0'); } catch { /* storage unavailable */ }
+  // charts are sized to their container: redraw once the new column widths apply
+  requestAnimationFrame(() => { if (state.audit) { renderDomainChart(); renderDistributionChart(); } });
+}
+
+try { if (localStorage.getItem(CHAT_FOLD_KEY) === '1') $('#layout').classList.add('chat-folded'); } catch { /* storage unavailable */ }
+
+function openChat() {
+  if (overlayChat.matches) $('#chat').classList.add('open');
+  else if ($('#layout').classList.contains('chat-folded')) setChatFolded(false);
+  $('#chat-input').focus();
+}
+
+function closeChat() {
+  if (overlayChat.matches) $('#chat').classList.toggle('open', false);
+  else setChatFolded(true);
+}
 
 function askClaude(text) {
   openChat();
@@ -876,6 +940,6 @@ $('#chat-new').addEventListener('click', async () => {
   renderChatIntro();
 });
 $('#chat-open').addEventListener('click', openChat);
-$('#chat-close').addEventListener('click', () => $('#chat').classList.remove('open'));
+$('#chat-close').addEventListener('click', closeChat);
 
 load();

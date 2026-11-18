@@ -11,7 +11,34 @@
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
-  <div class="layout">
+  <div class="layout" id="layout">
+    <aside class="toc" id="toc">
+      <nav class="toc-sections" id="toc-sections" aria-label="Sections" hidden>
+      <p class="toc-title">Audit Sections</p>
+      <ul>
+        <li><a href="#kpis" data-toc="kpis">Difficulty overview</a></li>
+        <li><a href="#architecture-card" data-toc="architecture-card">Target architecture</a></li>
+        <li><a href="#decom-card" data-toc="decom-card">Decommission candidates</a></li>
+        <li><a href="#findings-card" data-toc="findings-card">Key findings</a></li>
+        <li><a href="#details-card" data-toc="details-card">Details</a>
+          <ul>
+            <li><a href="#details-card" data-toc-tab="objects">Objects</a></li>
+            <li><a href="#details-card" data-toc-tab="flows">Data flows</a></li>
+            <li><a href="#details-card" data-toc-tab="chains">Process chains</a></li>
+            <li><a href="#details-card" data-toc-tab="sources">Source systems</a></li>
+            <li><a href="#details-card" data-toc-tab="inventory">Inventory</a></li>
+          </ul>
+        </li>
+      </ul>
+      </nav>
+
+      <fieldset class="targets" id="targets">
+        <legend>Migration target</legend>
+        <div class="target-options" id="target-options" role="radiogroup" aria-label="Migration target"></div>
+        <button type="button" class="btn primary run-audit" id="run-audit">Run audit</button>
+      </fieldset>
+    </aside>
+
     <main class="main" id="main">
       <header class="topbar">
         <div class="brand">
@@ -28,15 +55,8 @@
             <button type="button" data-scope="custom" aria-pressed="true">Customer objects</button>
             <button type="button" data-scope="all" aria-pressed="false">Include SAP content</button>
           </div>
-          <button type="button" class="btn primary" id="run-audit">Run audit</button>
         </div>
       </header>
-
-      <fieldset class="targets" id="targets">
-        <legend>Migration target</legend>
-        <div class="target-options" id="target-options" role="radiogroup" aria-label="Migration target"></div>
-        <p class="target-desc" id="target-desc"></p>
-      </fieldset>
 
       <div class="progress" id="progress" hidden>
         <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
@@ -51,7 +71,7 @@
       <div id="content" hidden>
         <section class="kpis" id="kpis" aria-label="Key figures"></section>
 
-        <section class="grid-2">
+        <section class="grid-2" id="charts">
           <article class="card">
             <h2>Average difficulty by domain</h2>
             <p class="card-sub">Domains are the top-level InfoAreas. 1 = lift and shift, 5 = redesign. Click a domain to list its objects.</p>
@@ -86,12 +106,12 @@
           <p class="table-note" id="decom-note"></p>
         </section>
 
-        <section class="card">
+        <section class="card" id="findings-card">
           <h2>Key findings</h2>
           <ul class="findings" id="findings"></ul>
         </section>
 
-        <section class="card">
+        <section class="card" id="details-card">
           <div class="tabs" role="tablist">
             <button role="tab" aria-selected="true" data-tab="objects">Objects</button>
             <button role="tab" aria-selected="false" data-tab="flows">Data flows</button>
@@ -134,7 +154,7 @@
         </div>
         <div class="chat-head-actions">
           <button type="button" class="btn ghost" id="chat-new" title="Start a new conversation">New</button>
-          <button type="button" class="btn ghost chat-close" id="chat-close" aria-label="Close chat">✕</button>
+          <button type="button" class="btn ghost chat-close" id="chat-close" aria-label="Fold chat" title="Fold chat">»</button>
         </div>
       </div>
       <div class="chat-log" id="chat-log" aria-live="polite"></div>
