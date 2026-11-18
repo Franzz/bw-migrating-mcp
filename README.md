@@ -17,7 +17,7 @@ Access is read-only, and the server certificate is checked against the BW root C
    |---|---|---|
    | Migration source | SAP BW | `bw-mcp`: the build clones the `bw-migration` branch of [Franzz/bw-modeling-mcp](https://github.com/Franzz/bw-modeling-mcp) into `modeling-mcp/bw` (or updates that checkout), then installs and builds it; also installs the audit app dependencies with `npm --prefix bw-audit install` |
    | Migration target | Microsoft Fabric | `fabric-mcp`: Microsoft's official Fabric MCP server. The build clones the `main` branch of [Franzz/fabric-modeling-mcp](https://github.com/Franzz/fabric-modeling-mcp) into `modeling-mcp/fabric` (or updates that checkout), then runs its own build, which installs the server and sets up the Microsoft sign-in (the Azure CLI in `modeling-mcp/fabric/.venv`, or VS Code's sign-in on Windows), see [modeling-mcp/fabric/README.md](modeling-mcp/fabric/README.md) |
-   | Migration target | SAP Datasphere | `datasphere-mcp`: the independent repo in `modeling-mcp/datasphere`. Its build installs SAP's official Datasphere CLI and the custom modeling MCP. Configure the tenant and OAuth sign-in as described in [modeling-mcp/datasphere/README.md](modeling-mcp/datasphere/README.md). By default the parent uses this local repo without fetching or switching branches. |
+   | Migration target | SAP Datasphere | `datasphere-mcp`: fetches [datasphere-modeling-mcp](https://github.com/Franzz/datasphere-modeling-mcp) into `modeling-mcp/datasphere` and runs its build, which installs SAP's official Datasphere CLI and the custom modeling MCP. Configure the tenant and OAuth sign-in as described in [modeling-mcp/datasphere/README.md](modeling-mcp/datasphere/README.md). |
    | Migration target | Snowflake + dbt | `snowflake-dbt-mcp`: the independent repo in `modeling-mcp/snowflake-dbt`. Its build uses uv/Python 3.12 to install dbt Core, the Snowflake adapter and the custom MCP into a local `.venv`. Maps BW storage to Snowflake and transformations to dbt. See [modeling-mcp/snowflake-dbt/README.md](modeling-mcp/snowflake-dbt/README.md). |
    | | Databricks, Google BigQuery | none yet: nothing is added to `.mcp.json` |
 
@@ -26,7 +26,7 @@ Access is read-only, and the server certificate is checked against the BW root C
    To select Snowflake/dbt directly: `npm run build -- --yes --target=snowflake-dbt`.
    Other target flags are `fabric`, `datasphere`, `databricks` and `bigquery`.
 
-   The folders under `modeling-mcp/`, including `datasphere/` and `snowflake-dbt/`, are ignored by this parent repository and managed as independent git repositories. Prepare those checkouts locally before selecting them, or supply their remote build variables.
+   The folders under `modeling-mcp/` are ignored by this parent repository and managed as independent git repositories. The BW, Fabric and Datasphere checkouts are cloned or fast-forwarded by the build; prepare `snowflake-dbt/` locally before selecting it, or set `SNOWFLAKE_DBT_MCP_REPO`.
 
 2. **Connection details:** copy `.destination.properties` from the Eclipse ADT/BWMT project of the system. Eclipse writes it when the project is created, at:
 
@@ -79,9 +79,9 @@ Set these in the environment of `npm run build`. Each checkout is cloned on the 
 | `FABRIC_MCP_REPO` | [Franzz/fabric-modeling-mcp](https://github.com/Franzz/fabric-modeling-mcp) | Repository of the Fabric server |
 | `FABRIC_MCP_BRANCH` | `main` | Branch of the Fabric server |
 | `FABRIC_SIGN_IN` | chosen by the Fabric build | `azcli` or `vscode`, see [modeling-mcp/fabric/README.md](modeling-mcp/fabric/README.md) |
-| `DATASPHERE_MCP_DIR` | `modeling-mcp/datasphere` | Folder of the independent Datasphere server repo |
-| `DATASPHERE_MCP_REPO` | unset | Optional remote URL; when set, clone/update the Datasphere repo like the other servers. Otherwise use the local checkout as-is |
-| `DATASPHERE_MCP_BRANCH` | `main` | Branch used when `DATASPHERE_MCP_REPO` is set |
+| `DATASPHERE_MCP_DIR` | `modeling-mcp/datasphere` | Folder of the Datasphere server checkout |
+| `DATASPHERE_MCP_REPO` | [Franzz/datasphere-modeling-mcp](https://github.com/Franzz/datasphere-modeling-mcp) | Repository of the Datasphere server |
+| `DATASPHERE_MCP_BRANCH` | `main` | Branch of the Datasphere server |
 | `SNOWFLAKE_DBT_MCP_DIR` | `modeling-mcp/snowflake-dbt` | Folder of the independent Snowflake/dbt MCP repo |
 | `SNOWFLAKE_DBT_MCP_REPO` | unset | Optional remote URL; otherwise build the existing local checkout |
 | `SNOWFLAKE_DBT_MCP_BRANCH` | `main` | Branch used when `SNOWFLAKE_DBT_MCP_REPO` is set |

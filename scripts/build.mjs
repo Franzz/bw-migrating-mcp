@@ -8,7 +8,8 @@
 //   target Microsoft Fabric  fabric-mcp: fetches fabric-modeling-mcp into modeling-mcp/fabric and runs
 //                            its build.mjs, which installs Microsoft's official Fabric MCP server and
 //                            its sign-in
-//   target SAP Datasphere    datasphere-mcp: runs the independent modeling-mcp/datasphere build
+//   target SAP Datasphere    datasphere-mcp: fetches datasphere-modeling-mcp into modeling-mcp/datasphere
+//                            and runs its build.mjs
 //   target Snowflake + dbt   snowflake-dbt-mcp: runs the independent modeling-mcp/snowflake-dbt build
 //   target Databricks, Google BigQuery
 //                            offered, but no MCP server yet: nothing is added for them
@@ -23,9 +24,9 @@
 //   FABRIC_MCP_DIR     checkout folder        (default: modeling-mcp/fabric, inside this project)
 //   FABRIC_MCP_REPO    git URL to clone from  (default: https://github.com/Franzz/fabric-modeling-mcp.git)
 //   FABRIC_MCP_BRANCH  branch to check out    (default: main)
-//   DATASPHERE_MCP_DIR checkout folder        (default: modeling-mcp/datasphere)
-//   DATASPHERE_MCP_REPO optional git URL      (unset: use the existing independent local repo)
-//   DATASPHERE_MCP_BRANCH branch to check out (default: main; used only with DATASPHERE_MCP_REPO)
+//   DATASPHERE_MCP_DIR checkout folder        (default: modeling-mcp/datasphere, inside this project)
+//   DATASPHERE_MCP_REPO git URL to clone from (default: https://github.com/Franzz/datasphere-modeling-mcp.git)
+//   DATASPHERE_MCP_BRANCH branch to check out (default: main)
 //   SNOWFLAKE_DBT_MCP_DIR checkout folder     (default: modeling-mcp/snowflake-dbt)
 //   SNOWFLAKE_DBT_MCP_REPO optional git URL   (unset: use the existing independent local repo)
 //   SNOWFLAKE_DBT_MCP_BRANCH branch           (default: main; used only with SNOWFLAKE_DBT_MCP_REPO)
@@ -51,7 +52,7 @@ function checkout(prefix, folder, repo, branch) {
 }
 const bwCheckout = checkout('BW_MCP', 'bw', 'https://github.com/Franzz/bw-modeling-mcp.git', 'bw-migration');
 const fabricCheckout = checkout('FABRIC_MCP', 'fabric', 'https://github.com/Franzz/fabric-modeling-mcp.git', 'main');
-const datasphereCheckout = checkout('DATASPHERE_MCP', 'datasphere', undefined, 'main');
+const datasphereCheckout = checkout('DATASPHERE_MCP', 'datasphere', 'https://github.com/Franzz/datasphere-modeling-mcp.git', 'main');
 const snowflakeCheckout = checkout('SNOWFLAKE_DBT_MCP', 'snowflake-dbt', undefined, 'main');
 
 function log(message) {
@@ -119,15 +120,13 @@ async function buildFabricServer({ interactive }) {
   return (await import(pathToFileURL(fabricBuild).href)).build({ interactive });
 }
 
-/** The Datasphere repo can be developed locally before a remote has been published. */
+/** Fetches datasphere-modeling-mcp, then runs its own build, which returns the .mcp.json entries. */
 async function buildDatasphereServer(options) {
-  const { dir, repo } = datasphereCheckout;
-  if (repo) syncCheckout(datasphereCheckout);
+  const { dir, branch } = datasphereCheckout;
+  syncCheckout(datasphereCheckout);
   const entry = path.join(dir, 'build.mjs');
-  if (!fs.existsSync(entry)) {
-    throw new Error(`${entry} not found. Prepare the independent Datasphere repo there, or set DATASPHERE_MCP_REPO to clone it.`);
-  }
-  log(`Datasphere MCP checkout ready: ${dir}`);
+  if (!fs.existsSync(entry)) throw new Error(`${entry} not found (branch ${branch})`);
+  log(`Datasphere MCP checkout ready: ${dir} (branch ${branch})`);
   return (await import(pathToFileURL(entry).href)).build(options);
 }
 

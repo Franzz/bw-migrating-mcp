@@ -35,7 +35,8 @@ if (process.env.MIGRATION_TEST_FAIL_AUDIT_INSTALL && args[0] === '--prefix' && a
   await writeFile(path.join(dir, 'modeling-mcp/bw/package.json'), '{}');
   const datasphereDir = path.join(dir, customDirectory ? 'independent-datasphere' : 'modeling-mcp/datasphere');
   if (withDatasphere) {
-    await mkdir(datasphereDir, { recursive: true });
+    await mkdir(path.join(datasphereDir, '.git'), { recursive: true });
+    await writeFile(path.join(datasphereDir, 'package.json'), '{}');
     await copyFile(path.join(root, 'modeling-mcp/datasphere/build.mjs'), path.join(datasphereDir, 'build.mjs'));
   }
   const snowflakeDir = path.join(dir, customDirectory ? 'independent-snowflake' : 'modeling-mcp/snowflake-dbt');
@@ -113,10 +114,11 @@ test('explicit Datasphere environment overrides saved settings and supports a cu
   assert.equal(mcpServers['datasphere-mcp'].args[0], path.join(context.datasphereDir, 'src/stdio.mjs'));
 });
 
-test('a missing independent Datasphere checkout fails without rewriting MCP configuration', async (t) => {
+test('a failed Datasphere clone stops the build without rewriting MCP configuration', async (t) => {
   const context = await fixture(t, { withDatasphere: false });
+  await writeFile(path.join(context.dir, 'bin/git'), '#!/bin/sh\nif [ "$1" = clone ]; then echo "clone failed: $*" >&2; exit 1; fi\nexit 0\n', { mode: 0o755 });
   await assert.rejects(execute(process.execPath, ['scripts/build.mjs', '--yes'], { cwd: context.dir, env: context.env }), (error) => {
-    assert.match(error.stderr, /DATASPHERE_MCP_REPO/);
+    assert.match(error.stderr, /clone failed: clone --branch main https:\/\/github\.com\/Franzz\/datasphere-modeling-mcp\.git/);
     return true;
   });
   assert.deepEqual(JSON.parse(await readFile(context.configPath, 'utf8')), context.initial);
