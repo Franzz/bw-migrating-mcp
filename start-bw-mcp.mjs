@@ -41,10 +41,14 @@ function fail(message) {
 const workspace = env.BW_ECLIPSE_WORKSPACE || path.join(os.homedir(), 'eclipse-workspace');
 const project = env.BW_ECLIPSE_PROJECT;
 const localDest = path.join(here, '.destination.properties');
-const eclipseDest = path.join(workspace, '.metadata/.plugins/org.eclipse.core.resources.semantic/.cache',
+const eclipseDest = project && path.join(workspace, '.metadata/.plugins/org.eclipse.core.resources.semantic/.cache',
   project, '.destination.properties');
 const destFile = fs.existsSync(localDest) ? localDest : eclipseDest;
-if (!fs.existsSync(destFile)) fail(`No .destination.properties next to this file nor in Eclipse project '${project}' (see README.md)`);
+if (!destFile || !fs.existsSync(destFile)) {
+  fail(project
+    ? `No .destination.properties next to this file nor in Eclipse project '${project}' (see README.md)`
+    : 'No .destination.properties next to this file; copy it here or set BW_ECLIPSE_PROJECT (see README.md)');
+}
 const dest = readProperties(destFile);
 
 const credFile = path.join(here, 'credentials.ini');
