@@ -112,6 +112,22 @@ export function scoreTransformation(o) {
   return result(1, r);
 }
 
+/** Update rules and transfer rules: the transformation rules, plus the cost of leaving 3.x. */
+export function scoreFlow3x(o) {
+  const d = o.details || {};
+  const rules = d.ruleTypes || {};
+  const base = scoreTransformation({ ...o, details: { ...d, ruleTypes: { MASTER: rules.MASTER_DATA_READ || 0, FORMULA: rules.FORMULA || 0 } } });
+  const kind = o.type === 'UPDR' ? 'Update rules' : 'Transfer rules';
+  const r = [{ text: `${kind} (3.x data flow): no successor outside BW 3.x, the logic is rebuilt or first migrated to a transformation`, points: 1 }];
+  if (d.expertMode) r.push({ text: 'Expert mode: the whole update is ABAP', points: 2 });
+  const raw = base.raw + r.reduce((n, x) => n + x.points, 0);
+  return { difficulty: clamp(raw), raw, reasons: [...r.map((x) => x.text), ...base.reasons] };
+}
+
+export function scoreDataSource3x(o) {
+  return result(2, [{ text: '3.x DataSource: extraction is rebuilt on an ODP-based source (or the DataSource migrated to the 7.x type first)' }]);
+}
+
 export function scoreDtp(o) {
   return result(1, [{ text: 'DTP: load step, becomes a pipeline/model run (filters and delta reproduced)' }]);
 }
@@ -189,6 +205,9 @@ const SCORERS = {
   IOBJ: ['masterdata', scoreMasterData],
   TRFN: ['logic', scoreTransformation],
   DTPA: ['logic', scoreDtp],
+  UPDR: ['logic', scoreFlow3x],
+  ISTS: ['logic', scoreFlow3x],
+  ISFS: ['extraction', scoreDataSource3x],
   LSYS: ['extraction', scoreSourceSystem],
   RSPC: ['orchestration', scoreChain],
   QUERY: ['reporting', scoreQuery],

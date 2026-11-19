@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 const execute = promisify(execFile);
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
-async function fixture(t, { withDatasphere = true, customDirectory = false, snowflake = false, withSnowflake = true } = {}) {
+async function fixture(t, { withDatasphere = true, customDirectory = false, snowflake = false, withSnowflake = true, withPatch = false } = {}) {
   const dir = await mkdtemp(path.join(tmpdir(), 'migration-build-test-'));
   t.after(() => rm(dir, { recursive: true, force: true }));
   await mkdir(path.join(dir, 'scripts'), { recursive: true });
@@ -29,6 +29,11 @@ if (process.env.MIGRATION_TEST_FAIL_AUDIT_INSTALL && args[0] === '--prefix' && a
   process.exit(1);
 }
 `, { mode: 0o755 });
+  if (withPatch) {
+    await copyFile(path.join(root, 'scripts/bw-env.mjs'), path.join(dir, 'scripts/bw-env.mjs'));
+    await mkdir(path.join(dir, 'bw-api-patch'));
+    await copyFile(path.join(root, 'bw-api-patch/install.mjs'), path.join(dir, 'bw-api-patch/install.mjs'));
+  }
   await mkdir(path.join(dir, 'bw-audit'));
   await copyFile(path.join(root, 'bw-audit/package.json'), path.join(dir, 'bw-audit/package.json'));
   await mkdir(path.join(dir, 'modeling-mcp/bw/.git'), { recursive: true });
@@ -155,4 +160,19 @@ test('missing Snowflake checkout and invalid target leave MCP configuration inta
     await assert.rejects(execute(process.execPath, ['scripts/build.mjs', '--yes', `--target=${target}`], { cwd: context.dir, env: context.env }));
     assert.deepEqual(JSON.parse(await readFile(context.configPath, 'utf8')), context.initial);
   }
+});
+
+test('the BW API patch is only checked unattended, and an unreachable BW does not stop the build', async (t) => {
+  const context = await fixture(t, { withPatch: true });
+  const { stdout } = await execute(process.execPath, ['scripts/build.mjs', '--yes', '--target=databricks'], { cwd: context.dir, env: context.env });
+  assert.match(stdout, /Install missing parts of the BW API patch \(bw-api-patch\) into the BW system\? no \(default\)/);
+  assert.match(stdout, /bw-api-patch: not checked: No \.destination\.properties/);
+  const { mcpServers } = JSON.parse(await readFile(context.configPath, 'utf8'));
+  assert.ok(mcpServers['bw-mcp']);
+});
+
+test('a build without the bw-api-patch folder skips the patch', async (t) => {
+  const context = await fixture(t);
+  const { stdout } = await execute(process.execPath, ['scripts/build.mjs', '--yes', '--target=databricks'], { cwd: context.dir, env: context.env });
+  assert.match(stdout, /bw-api-patch\/install\.mjs not found: BW API patch skipped/);
 });

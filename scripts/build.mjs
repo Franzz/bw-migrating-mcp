@@ -4,7 +4,11 @@
 // Asks for the migration source and the migration target, prepares the MCP server of each
 // and writes them into .mcp.json, the only MCP file Claude Code reads here:
 //   source SAP BW            bw-mcp: fetches bw-modeling-mcp into modeling-mcp/bw and builds it;
-//                            installs the audit app dependencies
+//                            installs the audit app dependencies; checks the ABAP patch of the BW
+//                            API (bw-api-patch) in the BW system and, once confirmed, installs the
+//                            missing parts. Without a terminal or with --yes it only checks, unless
+//                            --install-bw-patch is given. A failed check or install is reported and
+//                            does not stop the build.
 //   target Microsoft Fabric  fabric-mcp: fetches fabric-modeling-mcp into modeling-mcp/fabric and runs
 //                            its build.mjs, which installs Microsoft's official Fabric MCP server and
 //                            its sign-in
@@ -102,6 +106,27 @@ function syncCheckout({ dir, repo, branch }) {
   }
 }
 
+/**
+ * Checks the BW API patch and installs what is missing when `apply` is true. Never fails the
+ * build: the MCP server works without it on BW/4HANA, and on a classic release the check
+ * names what is missing and how to install it later.
+ */
+async function patchBwApi({ apply }) {
+  const entry = path.join(root, 'bw-api-patch', 'install.mjs');
+  if (!fs.existsSync(entry)) {
+    log('bw-api-patch/install.mjs not found: BW API patch skipped');
+    return;
+  }
+  const say = (message) => log(`bw-api-patch: ${message}`);
+  try {
+    const { install } = await import(pathToFileURL(entry).href);
+    await install({ apply, log: say });
+  } catch (err) {
+    say(`not checked: ${err.message}`);
+    say('the MCP server is configured anyway; run "npm run bw-api-patch" once the BW connection works');
+  }
+}
+
 function buildBwServer() {
   const { dir, branch } = bwCheckout;
   syncCheckout(bwCheckout);
@@ -149,9 +174,10 @@ const SOURCES = [
   {
     label: 'SAP BW',
     names: ['bw-mcp'],
-    setup: ({ current }) => {
+    setup: async ({ current, bwPatch }) => {
       buildBwServer();
       run(root, 'npm', ['--prefix', 'bw-audit', 'install']);
+      await patchBwApi({ apply: bwPatch });
       return {
         'bw-mcp': {
           type: 'stdio',
@@ -206,6 +232,15 @@ function createPrompter(interactive) {
         process.stdout.write(`Type a number from 1 to ${options.length}.\n`);
       }
     },
+    /** Yes/no question; without a terminal the default answers. */
+    async confirm(question, fallback) {
+      if (!rl) {
+        log(`${question} ${fallback ? 'yes' : 'no'} (default)`);
+        return fallback;
+      }
+      const answer = (await rl.question(`\n${question} [${fallback ? 'Y/n' : 'y/N'}]: `)).trim();
+      return answer ? /^y(es)?$/i.test(answer) : fallback;
+    },
     close() { rl?.close(); },
   };
 }
@@ -219,6 +254,10 @@ try {
 
   // Questions first, so the build runs unattended afterwards.
   const source = await prompt.pick('Migration source?', SOURCES, defaultOf(SOURCES));
+  // Asked here, with the other questions, because the install writes into the BW system.
+  const bwPatch = source.names.includes('bw-mcp') && (process.argv.includes('--install-bw-patch')
+    // On a terminal the default is to install; unattended (--yes, CI) the default is to check only.
+    || await prompt.confirm('Install missing parts of the BW API patch (bw-api-patch) into the BW system?', interactive));
   const targetFlag = process.argv.find((arg) => arg.startsWith('--target='))?.slice('--target='.length);
   const targetOverride = targetFlag === undefined ? undefined : TARGETS.find((s) =>
     ({ 'Microsoft Fabric': 'fabric', 'SAP Datasphere': 'datasphere', 'Snowflake + dbt': 'snowflake-dbt',
@@ -232,7 +271,7 @@ try {
     return system.setup;
   });
   const added = {};
-  for (const system of chosen) Object.assign(added, await system.setup({ current, interactive }));
+  for (const system of chosen) Object.assign(added, await system.setup({ current, interactive, bwPatch }));
 
   // Keep the servers added by hand, replace the ones this script manages.
   const servers = { ...current };

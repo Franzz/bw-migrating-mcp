@@ -15,7 +15,7 @@ Access is read-only, and the server certificate is checked against the BW root C
 
    | Question | Choices | MCP server |
    |---|---|---|
-   | Migration source | SAP BW | `bw-mcp`: the build clones the `bw-migration` branch of [Franzz/bw-modeling-mcp](https://github.com/Franzz/bw-modeling-mcp) into `modeling-mcp/bw` (or updates that checkout), then installs and builds it; also installs the audit app dependencies with `npm --prefix bw-audit install` |
+   | Migration source | SAP BW | `bw-mcp`: the build clones the `bw-migration` branch of [Franzz/bw-modeling-mcp](https://github.com/Franzz/bw-modeling-mcp) into `modeling-mcp/bw` (or updates that checkout), then installs and builds it; also installs the audit app dependencies with `npm --prefix bw-audit install`, and checks the [BW API patch](bw-api-patch/README.md) in the BW system (step 4) |
    | Migration target | Microsoft Fabric | `fabric-mcp`: Microsoft's official Fabric MCP server. The build clones the `main` branch of [Franzz/fabric-modeling-mcp](https://github.com/Franzz/fabric-modeling-mcp) into `modeling-mcp/fabric` (or updates that checkout), then runs its own build, which installs the server and sets up the Microsoft sign-in (the Azure CLI in `modeling-mcp/fabric/.venv`, or VS Code's sign-in on Windows), see [modeling-mcp/fabric/README.md](modeling-mcp/fabric/README.md) |
    | Migration target | SAP Datasphere | `datasphere-mcp`: fetches [datasphere-modeling-mcp](https://github.com/Franzz/datasphere-modeling-mcp) into `modeling-mcp/datasphere` and runs its build, which installs SAP's official Datasphere CLI and the custom modeling MCP. Configure the tenant and OAuth sign-in as described in [modeling-mcp/datasphere/README.md](modeling-mcp/datasphere/README.md). |
    | Migration target | Snowflake + dbt | `snowflake-dbt-mcp`: the independent repo in `modeling-mcp/snowflake-dbt`. Its build uses uv/Python 3.12 to install dbt Core, the Snowflake adapter and the custom MCP into a local `.venv`. Maps BW storage to Snowflake and transformations to dbt. See [modeling-mcp/snowflake-dbt/README.md](modeling-mcp/snowflake-dbt/README.md). |
@@ -36,7 +36,13 @@ Access is read-only, and the server certificate is checked against the BW root C
 
 3. **Credentials:** copy `credentials.example.ini` to `credentials.ini` and fill in your SAP user and password. Keep it private (`chmod 600 credentials.ini`).
 
-4. **Agents:** The agent opens this folder (tested with Claude Code). Approve the servers when asked and check them with `/mcp`. After a new build, restart the agent (in VS Code: **Developer: Reload Window**) so it loads the new `.mcp.json`.
+4. **BW API patch (classic SAP BW only, not BW/4HANA):** a classic BW system needs some ABAP before bw-mcp can work with it. All of it is in [bw-api-patch](bw-api-patch/README.md), with an installer. The build checks it when SAP BW is the source. On a terminal it asks whether to install the missing parts (default yes); unattended it only reports them, unless you pass `npm run build -- --yes --install-bw-patch`. The Accept header enhancement has to be created by hand in SE24, and the installer tells you whether it is in place. The check needs the connection from steps 2 and 3. On a first build, before those files exist, it reports that it could not connect and the build carries on. Run it later on its own:
+
+   ```bash
+   npm run bw-api-patch
+   ```
+
+5. **Agents:** The agent opens this folder (tested with Claude Code). Approve the servers when asked and check them with `/mcp`. After a new build, restart the agent (in VS Code: **Developer: Reload Window**) so it loads the new `.mcp.json`.
 
    For Codex, register the same launcher in its shared CLI/IDE configuration:
 
@@ -62,7 +68,9 @@ Set these under `env` of `bw-mcp` in `.mcp.json`. Variables set there win over t
 
 With the v2 focused surface, `bw_describe` returns the parameters of each
 operation. On classic BW, read transformations and DTPs with `bw_find`,
-`operation=metadata_tables`, `object_type=TRFN` or `DTPA`; `bw_find` with
+`operation=metadata_tables`, `object_type=TRFN` or `DTPA`, and the 3.x data flow with
+`object_type=UPDR` (update rules), `ISTS` (transfer rules), `ISFS` (3.x DataSources) or
+`ISTD` (3.x InfoSources); `object_name="*"` lists each with its version. `bw_find` with
 `operation=dtps` lists a transformation's dependent DTPs. The server hides direct
 REST reads when the BW system does not publish those resources.
 
@@ -86,6 +94,8 @@ Set these in the environment of `npm run build`. Each checkout is cloned on the 
 | `SNOWFLAKE_DBT_MCP_REPO` | unset | Optional remote URL; otherwise build the existing local checkout |
 | `SNOWFLAKE_DBT_MCP_BRANCH` | `main` | Branch used when `SNOWFLAKE_DBT_MCP_REPO` is set |
 | `SNOWFLAKE_DBT_UV` | `uv` | uv executable used to install the isolated dbt/MCP environment |
+| `BW_PATCH_PACKAGE` | `$TMP` | Package of the ABAP objects the BW API patch creates, see [bw-api-patch](bw-api-patch/README.md) |
+| `BW_PATCH_TRANSPORT` | unset | Transport request for them; required for a package other than a local `$` package |
 
 The Datasphere target enables `read,write` tools by default; create/update saves drafts unless a tool call sets `deploy=true`. Enable `execute` or `delete` separately if needed. Datasphere connection settings stay in its ignored `datasphere.config.json`, or can be supplied through `DATASPHERE_*` environment variables. See its README for all settings and tool scopes.
 

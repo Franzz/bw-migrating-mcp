@@ -10,6 +10,7 @@
     "build": "node scripts/build.mjs",
     "start": "node start-bw-mcp.mjs",
     "bw-audit-start": "npm --prefix bw-audit start",
-    "test": "node --test test/*.test.mjs"
+    "test": "node --test test/*.test.mjs",
+    "bw-api-patch": "node bw-api-patch/install.mjs"
   }
 }

@@ -10,6 +10,7 @@ const TYPE_LABEL = {
   ADSO: 'aDSO', ODSO: 'Classic DSO', CUBE: 'InfoCube', MPRO: 'MultiProvider', HCPR: 'CompositeProvider',
   TRFN: 'Transformation', DTPA: 'DTP', RSPC: 'Process chain', QUERY: 'Query', VARIABLE: 'Variable',
   AFO: 'AfO workbook', ALVL: 'Aggregation level', LSYS: 'Source system', IOBJ: 'Master data',
+  UPDR: 'Update rules (3.x)', ISTS: 'Transfer rules (3.x)', ISFS: '3.x DataSource',
 };
 const SEVERITY = {
   critical: { label: 'Critical', icon: '!' },
@@ -106,7 +107,7 @@ function render() {
   if (!a) return;
   const sys = a.system;
   $('#system-line').textContent = [
-    sys.logicalSystem, sys.platform, sys.serverVersion && `server ${sys.serverVersion}`,
+    sys.logicalSystem, sys.platform, sys.software,
     sys.database, `audited ${new Date(a.generatedAt).toLocaleString()}`, `target ${a.target?.label || 'Generic platform'}`,
   ].filter(Boolean).join(' · ');
   renderKpis();
@@ -122,7 +123,7 @@ function render() {
   renderSources();
   renderInventory();
   updateToc();
-  $('#footnote').textContent = `Snapshot read in ${a.durationSec}s. ${a.errors.length ? `${a.errors.length} object(s) could not be read.` : 'Every object was read.'} ${a.target && a.target.key !== 'generic' ? `Scores come from fixed rules, adjusted for ${a.target.label}; each object lists the reasons.` : 'Scores come from fixed, platform-agnostic rules.'} Ask Claude to challenge any of them.`;
+  $('#footnote').textContent = `Snapshot read in ${a.durationSec}s. ${a.errors.length ? `${a.errors.length} object(s) could not be read.` : 'Every object was read.'} ${a.target && a.target.key !== 'generic' ? `Scores come from fixed rules, adjusted for ${a.target.label}; each object lists the reasons.` : 'Scores come from fixed, platform-agnostic rules.'} Ask Agent to challenge any of them.`;
 }
 
 function renderKpis() {
@@ -248,7 +249,7 @@ function renderArchitecture() {
         <span class="card-sub">${d.count} object(s), average ${d.average.toFixed(1)}</span>
         <div class="arch-actions">
           <button class="btn small" data-arch-list>List objects</button>
-          <button class="btn small primary" data-arch-ask>Ask Claude</button>
+          <button class="btn small primary" data-arch-ask>Ask Agent</button>
         </div>
       </div>
     </div>
@@ -355,7 +356,7 @@ function renderFindings() {
         <p>${esc(f.detail)}</p>
         ${f.inScope.length ? `<div class="objs">${f.inScope.slice(0, 10).map((o) => `<button class="chip" data-obj="${esc(o.id)}" title="${esc(o.description || '')}">${esc(shortName(o))}</button>`).join('')}${f.inScope.length > 10 ? `<button class="chip" data-finding="${i}">+${f.inScope.length - 10} more</button>` : ''}</div>` : ''}
       </div>
-      ${f.inScope.length ? `<button class="btn small" data-ask-finding="${i}">Ask Claude</button>` : '<span></span>'}
+      ${f.inScope.length ? `<button class="btn small" data-ask-finding="${i}">Ask Agent</button>` : '<span></span>'}
     </li>`).join('') : '<li class="finding"><span></span><p>No findings in this scope.</p><span></span></li>';
   $$('#findings [data-obj]').forEach((b) => b.addEventListener('click', () => focusObjects([b.dataset.obj], b.textContent)));
   $$('#findings [data-finding]').forEach((b) => b.addEventListener('click', () => {
@@ -606,7 +607,7 @@ function objectDetail(o) {
   if (o.domain) add('Domain', `${domainLabel(o.domain)}${o.domainVia ? `, ${o.domainVia}` : ''}`);
   return `<div><strong>Why ${o.difficulty}/5</strong><ul>${o.reasons.map((r) => `<li>${esc(r)}</li>`).join('')}</ul>
     ${kv.length ? `<div class="kv">${kv.join(' · ')}</div>` : ''}
-    <div style="margin-top:10px"><button class="btn small primary" data-ask="${esc(o.id)}">Ask Claude about this object</button></div></div>`;
+    <div style="margin-top:10px"><button class="btn small primary" data-ask="${esc(o.id)}">Ask Agent about this object</button></div></div>`;
 }
 
 function renderFlows() {

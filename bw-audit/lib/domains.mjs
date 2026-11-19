@@ -110,7 +110,7 @@ export function assignDomains(objects, areas, { infoSources = [] } = {}) {
 
   // InfoSources: resolved forward, through the transformations that read them.
   const trcs = infoSources.filter((t) => t && t.infoArea);
-  const flowObjs = objects.filter((o) => (o.type === 'TRFN' || o.type === 'DTPA') && o.details?.flow);
+  const flowObjs = objects.filter((o) => ['TRFN', 'DTPA', 'UPDR', 'ISTS'].includes(o.type) && o.details?.flow);
   const endpoint = (ep, seen = new Set()) => {
     if (!ep) return null;
     if (PROVIDERS.includes(ep.type)) {

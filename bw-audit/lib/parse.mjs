@@ -57,9 +57,14 @@ export function parseSystemProfile(text) {
   const unavailable = [...text.matchAll(/^(.+?)\s{2,}unavailable — missing: (.+)$/gm)]
     .map((m) => ({ area: m[1].trim(), missing: m[2].trim() }));
   return {
-    platform: headerValue(text, 'Platform')?.replace(/\s*\[.*\]\s*$/, '') || null,
+    // bw-mcp (upstream wording) says "7.5 or lower" for every non-BW/4HANA release, 7.58
+    // embedded in S/4HANA included; the release itself comes from the Software line.
+    platform: headerValue(text, 'Platform')?.replace(/\s*\[.*\]\s*$/, '').replace(/\(7\.5 or lower\)/, '(not BW/4HANA)') || null,
     logicalSystem: headerValue(text, 'Logical system'),
-    serverVersion: headerValue(text, 'Server version'),
+    // The installed release (CVERS). The modeling backend number is kept apart: it is not
+    // the SAP_BW release, and showing it as the server version read as one.
+    software: headerValue(text, 'Software')?.replace(/^\?.*$/, '') || null,
+    backendVersion: headerValue(text, 'Server version'),
     database: headerValue(text, 'Database'),
     planning: headerValue(text, 'Planning'),
     classic: /classic SAP BW/i.test(text),
@@ -133,6 +138,75 @@ export function parseTransformation(text) {
     ruleTypes,
     abapLines: classified.reduce((n, r) => n + r.lines, 0),
     patterns: [...new Map(classified.flatMap((r) => r.patterns).map((p) => [p.key, p])).values()],
+  };
+}
+
+// ---------- 3.x data flow (bw_find metadata_tables UPDR / ISTS / ISFS / ISTD) ----------
+
+/** "[active, routines 2, start routine, ...]" -> { version: 'active', bits: [...] } */
+function bracket(text) {
+  const bits = text.split(', ').map((b) => b.trim());
+  return { version: bits[0], active: bits[0] === 'active', bits };
+}
+
+/** UPDR "*": "  <id>  <target> <- <InfoSource>  [active, routines 2, start routine, ...]" */
+export function parseUpdateRuleList(text) {
+  return [...text.matchAll(/^ {2}(\S+) {2}(\S+) <- (\S+) {2}\[(.+)\]$/gm)].map((m) => {
+    const b = bracket(m[4]);
+    return {
+      id: m[1], target: m[2], infoSource: m[3], version: b.version, active: b.active,
+      routines: Number(m[4].match(/routines (\d+)/)?.[1] || 0), startRoutine: b.bits.includes('start routine'),
+    };
+  });
+}
+
+/** ISTS "*": "  <DataSource>  <source system> -> <InfoSource>  [active, transaction data, transfer structure X]" */
+export function parseTransferRuleList(text) {
+  return [...text.matchAll(/^ {2}(\S+) {2}(\S+) -> (\S+) {2}\[(.+)\]$/gm)].map((m) => {
+    const b = bracket(m[4]);
+    return {
+      dataSource: m[1], sourceSystem: m[2], infoSource: m[3], version: b.version, active: b.active,
+      transferStructure: m[4].match(/transfer structure (\S+)/)?.[1] || null,
+    };
+  });
+}
+
+/** ISFS "*": "  <DataSource>  <source system>[ — text]  [active, transaction data, export DataSource (generated), ...]" */
+export function parseDataSource3xList(text) {
+  return [...text.matchAll(/^ {2}(\S+) {2}(\S+)(?: — (.*?))? {2}\[(.+)\]$/gm)].map((m) => {
+    const b = bracket(m[4]);
+    return {
+      name: m[1], sourceSystem: m[2], description: m[3] || '', version: b.version, active: b.active,
+      export: b.bits.includes('export DataSource (generated)'), migrated: b.bits.includes('migrated to RSDS'),
+      feeds: m[4].match(/feeds (\S+)/)?.[1] || null,
+    };
+  });
+}
+
+/** ISTD "*": "  <InfoSource>[ — text]  [active, generated from DSO, DM]" */
+export function parseInfoSource3xList(text) {
+  return [...text.matchAll(/^ {2}(\S+)(?: — (.*?))? {2}\[(.+)\]$/gm)].map((m) => {
+    const b = bracket(m[3]);
+    return { name: m[1], description: m[2] || '', version: b.version, active: b.active, generated: /generated from/.test(m[3]) };
+  });
+}
+
+/** UPDR / ISTS single read: routines as for transformations, rule kinds from the rule sections. */
+export function parseFlow3x(text) {
+  const t = parseTransformation(text);
+  const s = sections(text);
+  const ruleTypes = {};
+  for (const key of ['Key Figure Rules', 'Characteristic Rules', 'Rules']) {
+    for (const m of (s[key] || '').matchAll(/^\s*\[([A-Z_]+)\]/gm)) ruleTypes[m[1]] = (ruleTypes[m[1]] || 0) + 1;
+  }
+  const head = s._head || '';
+  return {
+    version: headerValue(head, 'Version')?.slice(0, 1) || null,
+    target: headerValue(head, 'Target'),
+    infoSource: headerValue(head, 'InfoSource')?.split(' — ')[0] || null,
+    dataSource: headerValue(head, 'DataSource')?.split(' ')[0] || null,
+    expertMode: headerValue(head, 'Expert mode') === 'yes',
+    routines: t.routines, abapLines: t.abapLines, patterns: t.patterns, ruleTypes,
   };
 }
 
