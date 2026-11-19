@@ -12,6 +12,7 @@
 </head>
 <body>
   <div class="layout" id="layout">
+    <button type="button" class="toc-toggle" id="toc-toggle" aria-controls="toc" aria-expanded="true" aria-label="Fold sections panel" title="Fold sections panel">❮</button>
     <aside class="toc" id="toc">
       <nav class="toc-sections" id="toc-sections" aria-label="Sections" hidden>
       <p class="toc-title">Audit Sections</p>
@@ -147,6 +148,7 @@
     </main>
 
     <aside class="chat" id="chat" aria-label="Chat with Claude">
+      <button type="button" class="chat-close" id="chat-close" aria-label="Fold chat" title="Fold chat">❯</button>
       <div class="chat-head">
         <div>
           <h2>Ask Claude</h2>
@@ -154,7 +156,6 @@
         </div>
         <div class="chat-head-actions">
           <button type="button" class="btn ghost" id="chat-new" title="Start a new conversation">New</button>
-          <button type="button" class="btn ghost chat-close" id="chat-close" aria-label="Fold chat" title="Fold chat">»</button>
         </div>
       </div>
       <div class="chat-log" id="chat-log" aria-live="polite"></div>

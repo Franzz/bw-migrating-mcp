@@ -659,7 +659,7 @@ function switchTab(tab) {
   state.tab = tab;
   $$('.tabs button').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === tab)));
   $$('.tab-panel').forEach((p) => { p.hidden = p.dataset.panel !== tab; });
-  $$('.toc [data-toc-tab]').forEach((l) => l.classList.toggle('active', l.dataset.tocTab === tab));
+  spyToc();
 }
 
 // ---------------------------------------------------------------- audit run
@@ -750,6 +750,9 @@ function spyToc() {
   let current = links[0];
   for (const l of links) if (atBottom || $('#' + l.dataset.toc).getBoundingClientRect().top <= line) current = l;
   links.forEach((l) => l.classList.toggle('active', l === current));
+  // the selected tab is highlighted only while the Details section is the one being read
+  const inDetails = current?.dataset.toc === 'details-card';
+  $$('.toc [data-toc-tab]').forEach((l) => l.classList.toggle('active', inDetails && l.dataset.tocTab === state.tab));
 }
 
 let spyPending = false;
@@ -764,7 +767,6 @@ function updateToc() {
   $('#toc-sections').hidden = !show;
   if (!show) return;
   $$('.toc [data-toc]').forEach((l) => { l.parentElement.hidden = $('#' + l.dataset.toc).hidden; });
-  $$('.toc [data-toc-tab]').forEach((l) => l.classList.toggle('active', l.dataset.tocTab === state.tab));
   spyToc();
 }
 
@@ -791,6 +793,23 @@ function setChatFolded(folded) {
 }
 
 try { if (localStorage.getItem(CHAT_FOLD_KEY) === '1') $('#layout').classList.add('chat-folded'); } catch { /* storage unavailable */ }
+
+// ---------------------------------------------------------------- sections panel
+
+const TOC_FOLD_KEY = 'bw-audit-toc-folded';
+
+function setTocFolded(folded, persist = true) {
+  $('#layout').classList.toggle('toc-folded', folded);
+  const btn = $('#toc-toggle');
+  btn.textContent = folded ? '❯' : '❮';
+  btn.setAttribute('aria-expanded', String(!folded));
+  btn.title = btn.ariaLabel = folded ? 'Show sections panel' : 'Fold sections panel';
+  if (!persist) return;
+  try { localStorage.setItem(TOC_FOLD_KEY, folded ? '1' : '0'); } catch { /* storage unavailable */ }
+  requestAnimationFrame(() => { if (state.audit) { renderDomainChart(); renderDistributionChart(); } });
+}
+
+try { if (localStorage.getItem(TOC_FOLD_KEY) === '1') setTocFolded(true, false); } catch { /* storage unavailable */ }
 
 function openChat() {
   if (overlayChat.matches) $('#chat').classList.add('open');
@@ -941,5 +960,6 @@ $('#chat-new').addEventListener('click', async () => {
 });
 $('#chat-open').addEventListener('click', openChat);
 $('#chat-close').addEventListener('click', closeChat);
+$('#toc-toggle').addEventListener('click', () => setTocFolded(!$('#layout').classList.contains('toc-folded')));
 
 load();
