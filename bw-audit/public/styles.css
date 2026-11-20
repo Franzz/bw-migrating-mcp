@@ -188,12 +188,14 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .tooltip strong { display: block; font-weight: 600; margin-bottom: 2px; }
 
 /* Target architecture */
-.domain-picker { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 14px; }
-.domain-picker button { border: 1px solid var(--border); background: var(--surface); border-radius: 8px; padding: 5px 10px; cursor: pointer; color: var(--text-2); font-weight: 600; font-size: 12.5px; }
+#domain-filter-card { margin-bottom: 18px; }
+.domain-picker { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin: 0; }
+.domain-picker button { border: 1px solid var(--border); background: var(--surface); border-radius: 999px; min-height: 44px; padding: 10px 16px; cursor: pointer; color: var(--text-2); font-weight: 600; font-size: 14px; }
 .domain-picker button:hover { border-color: var(--accent); }
-.domain-picker button[aria-selected="true"] { background: var(--th2-bg); border-color: var(--th2-bg); color: #fff; }
+.domain-picker button[aria-pressed="true"] { background: var(--th2-bg); border-color: var(--th2-bg); color: #fff; }
 .domain-picker button.special { border-style: dashed; }
 .domain-picker .count { font-weight: 400; opacity: .75; margin-left: 2px; }
+.architecture-domain + .architecture-domain { margin-top: 20px; }
 .arch-head { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding: 12px 14px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--border); border-left: 4px solid var(--tw-blue); }
 .arch-head h3 { color: var(--subtitle); font-size: 16px; font-weight: 600; }
 .arch-head h3 .key { font-size: 12.5px; color: var(--text-3); font-weight: 400; margin-left: 4px; }
@@ -215,6 +217,34 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .arch-notes li + li { margin-top: 3px; }
 .chart .axis-label.special { font-style: italic; fill: var(--text-3); }
 .tooltip .mono { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 12px; color: var(--text-3); }
+
+/* Audited data flows */
+.lineage-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.lineage-toolbar .card-sub { margin: 0; }
+#lineage-card:is(:fullscreen, .lineage-fullscreen) { position: fixed; inset: 0; z-index: 100; display: flex; flex-direction: column; width: 100%; height: 100%; margin: 0; padding: 20px; border: 0; border-radius: 0; background: var(--surface); overflow: auto; }
+#lineage-card:is(:fullscreen, .lineage-fullscreen) .lineage-viewport { flex: 1 1 auto; min-height: 120px; height: auto; }
+#lineage-card:is(:fullscreen, .lineage-fullscreen) .lineage-toolbar { flex-shrink: 0; }
+.lineage-viewport { position: relative; overflow: hidden; height: clamp(320px, 65vh, 740px); border: 1px solid var(--border); border-radius: 10px; background-color: var(--surface-2); background-image: radial-gradient(var(--border) 1px, transparent 1px); background-size: 18px 18px; cursor: grab; touch-action: none; user-select: none; }
+.lineage-viewport svg { position: absolute; left: 0; top: 0; display: block; max-width: none; }
+.lineage-viewport.is-panning, .lineage-viewport.is-panning * { cursor: grabbing; }
+.lineage-viewport:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.lineage-edge { fill: none; stroke: var(--text-3); stroke-width: 1.5; opacity: .7; }
+.lineage-edge.feedback { stroke-dasharray: 5 4; }
+#lineage-arrow path { fill: var(--text-3); }
+.lineage-node { --node-color: var(--accent-text); }
+.lineage-node.query { --node-color: var(--tw-violet); }
+.lineage-node.transformation { --node-color: var(--tw-teal); }
+.lineage-node.source { --node-color: var(--text-3); }
+.lineage-box { fill: var(--surface); stroke: var(--border); stroke-width: 1.5; }
+.lineage-accent { fill: var(--node-color); }
+.lineage-node.context .lineage-box { stroke-dasharray: 5 3; }
+.lineage-node.inspectable { cursor: inherit; }
+.lineage-node.inspectable:hover .lineage-box, .lineage-node.inspectable:focus .lineage-box { stroke: var(--accent); stroke-width: 2.5; }
+.lineage-node:focus { outline: none; }
+.lineage-type { fill: var(--text-2); font: 11px var(--font-body); }
+.lineage-name { fill: var(--text); font: 600 12px ui-monospace, "Cascadia Code", Consolas, monospace; }
+.lineage-description { fill: var(--text-3); font: 11px var(--font-body); }
+.lineage-empty { padding: 30px 16px; text-align: center; color: var(--text-3); }
 
 /* Decommission candidates */
 .card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }

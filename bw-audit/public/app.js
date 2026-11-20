@@ -1,5 +1,6 @@
 import { marked } from '/vendor/marked.js';
 import DOMPurify from '/vendor/purify.js';
+import { buildLineage, layoutLineage } from '/lineage.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -29,8 +30,11 @@ const state = {
   scope: 'custom',
   tab: 'objects',
   sort: { key: 'difficulty', dir: 'desc' },
-  filters: { search: '', domain: '', category: '', type: '', min: 1, ids: null, idsLabel: '' },
-  archDomain: null,
+  filters: { search: '', category: '', type: '', min: 1, ids: null, idsLabel: '' },
+  domain: '',
+  lineageZoom: 1,
+  lineagePan: { x: 0, y: 0 },
+  lineageAutoFit: true,
   expanded: new Set(),
   chatEnabled: false,
   sessionId: null,
@@ -60,6 +64,14 @@ async function load() {
 
 function inScope(o) {
   return state.scope === 'all' || o.origin !== 'sap';
+}
+
+function inDomain(o) {
+  return !state.domain || (o.domain || '~unassigned') === state.domain;
+}
+
+function inSelection(o) {
+  return inScope(o) && inDomain(o);
 }
 
 function summary() {
@@ -113,8 +125,10 @@ function render() {
   renderKpis();
   renderDomainChart();
   renderDistributionChart();
+  renderDomainFilter();
   renderArchitecture();
   renderDecommission();
+  renderLineage();
   renderFindings();
   renderFilters();
   renderObjects();
@@ -165,13 +179,33 @@ function domainLabel(key) {
 const clip = (text, n) => (text.length > n ? `${text.slice(0, n - 1)}…` : text);
 
 function filterDomain(key) {
-  state.filters.domain = key;
-  state.filters.ids = null;
-  if (state.audit.architecture) { state.archDomain = key; renderArchitecture(); }
-  switchTab('objects');
-  renderFilters();
-  renderObjects();
-  scrollToTable();
+  state.domain = key;
+  state.filters = { search: '', category: '', type: '', min: 1, ids: null, idsLabel: '' };
+  state.expanded.clear();
+  render();
+}
+
+function renderDomainFilter() {
+  const allObjects = state.audit.objects;
+  if (state.domain && !allObjects.some(inDomain)) state.domain = '';
+  const scoped = allObjects.filter(inScope);
+  const counts = new Map();
+  for (const o of scoped) {
+    const key = o.domain || '~unassigned';
+    counts.set(key, (counts.get(key) || 0) + 1);
+  }
+  if (state.domain && !counts.has(state.domain)) counts.set(state.domain, 0);
+  const domains = [...counts].map(([key, count]) => ({ key, count,
+    label: domainLabel(key), special: state.audit.domains?.[key]?.special || key.startsWith('~'),
+  })).sort((a, b) => Number(a.special) - Number(b.special) || b.count - a.count || a.label.localeCompare(b.label));
+  $('#global-domains').innerHTML = [{ key: '', label: 'All domains', count: scoped.length }, ...domains].map((d) => `
+    <button type="button" data-domain="${esc(d.key)}" aria-pressed="${d.key === state.domain}" class="${d.special ? 'special' : ''}" title="${esc(d.label)}">
+      ${esc(d.label)} <span class="count">${fmt.format(d.count)}</span>
+    </button>`).join('');
+  $$('#global-domains button').forEach((b) => b.addEventListener('click', () => {
+    filterDomain(b.dataset.domain);
+    $$('#global-domains button').find((el) => el.dataset.domain === state.domain)?.focus({ preventScroll: true });
+  }));
 }
 
 function renderDomainChart() {
@@ -209,8 +243,199 @@ function renderDomainChart() {
     const d = doms[g.dataset.i];
     const areas = state.audit.domains?.[d.key]?.areas || [];
     return `<strong>${esc(d.label)}</strong>${d.special ? '' : `<span class="mono">${esc(d.key)}</span>${areas.length > 1 ? ` · ${areas.length} InfoAreas` : ''}<br>`}Average difficulty ${d.average.toFixed(1)}<br>${d.count} object(s), ${d.high} at 4 or 5`;
-  }, (g) => filterDomain(doms[g.dataset.i].key));
+  }, (g) => {
+    filterDomain(doms[g.dataset.i].key);
+    $('#domain-filter-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
 }
+
+// ---------------------------------------------------------------- audited data flows
+
+const LINEAGE_LABEL = { ...TYPE_LABEL, QUERY: 'BW query', RSDS: 'DataSource', TRCS: 'InfoSource', ISTD: '3.x InfoSource', PROV: 'InfoProvider' };
+const lineageKind = (n) => n.type === 'QUERY' ? 'query' : ['TRFN', 'UPDR', 'ISTS'].includes(n.type) ? 'transformation'
+  : ['RSDS', 'ISFS', 'TRCS', 'ISTD', 'IOBJ'].includes(n.type) ? 'source' : 'provider';
+
+function renderLineage() {
+  const label = state.domain ? domainLabel(state.domain) : 'All domains';
+  const graph = layoutLineage(buildLineage(state.audit.objects, {
+    domain: state.domain, includeSap: state.scope === 'all', flows: state.audit.flows || [],
+  }));
+  for (const n of graph.nodes) if (state.domain && n.context) n.inspectable = false;
+  const audited = graph.nodes.filter((n) => !n.context).length;
+  const context = graph.nodes.length - audited;
+  $('#lineage-summary').textContent = `${label} · ${fmt.format(audited)} audited object(s) · ${fmt.format(graph.edges.length)} connection(s)${context ? ` · ${fmt.format(context)} upstream reference(s)` : ''}`;
+  const connected = new Set(graph.edges.flatMap((e) => [e.from, e.to]));
+  const unlinked = graph.nodes.filter((n) => !connected.has(n.id)).length;
+  const feedback = graph.edges.some((e) => e.feedback);
+  $('#lineage-note').textContent = graph.nodes.length
+    ? `Arrows show recorded dependencies. Click and drag to move around; use + and − to zoom, or Fit to show all objects. Dashed boxes are upstream references.${unlinked ? ` ${unlinked} object(s) have no recorded connections in this snapshot.` : ''}${feedback ? ' Dashed arrows indicate cyclic dependencies.' : ''}`
+    : 'No DataSources, transformations, providers or BW queries recorded for this domain in the selected scope.';
+  const el = $('#lineage');
+  el.innerHTML = graph.nodes.length ? `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${graph.width} ${graph.height}" data-width="${graph.width}" data-height="${graph.height}" role="group" aria-label="${esc(label)} data flows, flowing upward">
+    <defs><marker id="lineage-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10Z"/></marker></defs>
+    <g class="lineage-edges">${graph.edges.map((e) => `<path class="lineage-edge${e.feedback ? ' feedback' : ''}" d="${e.path}" marker-end="url(#lineage-arrow)"/>`).join('')}</g>
+    ${graph.nodes.map((n, i) => {
+      const type = LINEAGE_LABEL[n.type] || n.type;
+      const title = `${type}: ${n.name}${n.description ? ` — ${n.description}` : ''}${n.sourceSystem ? ` · ${n.sourceSystem}` : ''}${n.context ? ` · upstream reference${n.domain ? ` (${domainLabel(n.domain)})` : ''}` : ''}`;
+      return `<g class="lineage-node ${lineageKind(n)}${n.context ? ' context' : ''}${n.inspectable ? ' inspectable' : ''}" transform="translate(${n.x},${n.y})"${n.inspectable ? ` role="button" tabindex="0" data-node="${i}" aria-label="${esc(`Inspect ${title}`)}"` : ''}>
+        <title>${esc(title)}</title>
+        <rect class="lineage-box" width="${n.width}" height="${n.height}" rx="9"/>
+        <rect class="lineage-accent" width="4" height="${n.height - 20}" x="1" y="10" rx="2"/>
+        <text class="lineage-type" x="14" y="19">${esc(type)}${n.context ? ' · reference' : ''}</text>
+        <text class="lineage-name" x="14" y="39">${esc(clip(n.name, 25))}</text>
+        <text class="lineage-description" x="14" y="59">${esc(clip(n.sourceSystem || n.description || (n.details?.flow ? `${n.details.flow.source.name} → ${n.details.flow.target.name}` : 'No description'), 30))}</text>
+      </g>`;
+    }).join('')}
+  </svg>` : '<p class="lineage-empty">No flow objects in this domain.</p>';
+  $$('#lineage [data-node]').forEach((node) => {
+    const inspect = async () => {
+      const n = graph.nodes[node.dataset.node];
+      if (isLineageFullscreen()) await exitLineageFullscreen();
+      state.expanded.add(n.objectId);
+      focusObjects([n.objectId], n.name);
+    };
+    node.addEventListener('click', inspect);
+    node.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); inspect(); } });
+  });
+  fitLineage();
+}
+
+function lineageFitZoom(svg) {
+  const viewport = $('#lineage');
+  return Math.min(1, Math.max(1, viewport.clientWidth - 24) / Number(svg.dataset.width),
+    Math.max(1, viewport.clientHeight - 24) / Number(svg.dataset.height));
+}
+
+function fitLineage() {
+  state.lineageAutoFit = true;
+  const svg = $('#lineage svg');
+  if (svg) {
+    state.lineageZoom = lineageFitZoom(svg);
+    state.lineagePan = {
+      x: ($('#lineage').clientWidth - Number(svg.dataset.width) * state.lineageZoom) / 2,
+      y: ($('#lineage').clientHeight - Number(svg.dataset.height) * state.lineageZoom) / 2,
+    };
+  }
+  applyLineageZoom();
+}
+
+function applyLineageZoom() {
+  const svg = $('#lineage svg');
+  if (svg) {
+    svg.style.width = `${Number(svg.dataset.width) * state.lineageZoom}px`;
+    svg.style.height = `${Number(svg.dataset.height) * state.lineageZoom}px`;
+    svg.style.transform = `translate(${state.lineagePan.x}px, ${state.lineagePan.y}px)`;
+  }
+  const percent = state.lineageZoom * 100;
+  $('#lineage-zoom-reset').textContent = `Fit · ${percent < 10 ? percent.toFixed(1) : Math.round(percent)}%`;
+  $('#lineage-zoom-out').disabled = !svg || state.lineageZoom <= Math.min(0.05, lineageFitZoom(svg));
+  $('#lineage-zoom-in').disabled = !svg || state.lineageZoom >= 1.5;
+  $('#lineage-zoom-reset').disabled = !svg;
+}
+
+function zoomLineage(factor) {
+  const svg = $('#lineage svg');
+  if (!svg) return;
+  const zoom = Math.min(1.5, Math.max(Math.min(0.05, lineageFitZoom(svg)), state.lineageZoom * factor));
+  const ratio = zoom / state.lineageZoom;
+  const centerX = $('#lineage').clientWidth / 2; const centerY = $('#lineage').clientHeight / 2;
+  state.lineagePan = { x: centerX - (centerX - state.lineagePan.x) * ratio,
+    y: centerY - (centerY - state.lineagePan.y) * ratio };
+  state.lineageZoom = zoom;
+  state.lineageAutoFit = false;
+  applyLineageZoom();
+}
+
+$('#lineage-zoom-out').addEventListener('click', () => zoomLineage(1 / 1.25));
+$('#lineage-zoom-in').addEventListener('click', () => zoomLineage(1.25));
+$('#lineage-zoom-reset').addEventListener('click', fitLineage);
+
+function isLineageFullscreen() {
+  return document.fullscreenElement === $('#lineage-card') || $('#lineage-card').classList.contains('lineage-fullscreen');
+}
+
+function updateLineageFullscreen() {
+  const active = isLineageFullscreen();
+  const button = $('#lineage-fullscreen');
+  button.textContent = active ? 'Exit fullscreen' : 'Fullscreen';
+  button.setAttribute('aria-pressed', String(active));
+  button.setAttribute('aria-label', active ? 'Exit fullscreen' : 'Enter fullscreen');
+  button.title = button.getAttribute('aria-label');
+  fitLineage();
+}
+
+async function exitLineageFullscreen() {
+  if (document.fullscreenElement === $('#lineage-card')) await document.exitFullscreen();
+  $('#lineage-card').classList.remove('lineage-fullscreen');
+  updateLineageFullscreen();
+}
+
+$('#lineage-fullscreen').addEventListener('click', async () => {
+  if (isLineageFullscreen()) { await exitLineageFullscreen(); return; }
+  const card = $('#lineage-card');
+  try {
+    if (!document.fullscreenEnabled || !card.requestFullscreen) throw new Error('Fullscreen unavailable');
+    await card.requestFullscreen();
+  } catch {
+    // Expand within the window on browsers without the Fullscreen API.
+    card.classList.add('lineage-fullscreen');
+  }
+  updateLineageFullscreen();
+});
+document.addEventListener('fullscreenchange', updateLineageFullscreen);
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && $('#lineage-card').classList.contains('lineage-fullscreen')) {
+    e.preventDefault();
+    exitLineageFullscreen();
+    $('#lineage-fullscreen').focus({ preventScroll: true });
+  }
+});
+
+const lineageViewport = $('#lineage');
+let lineageDrag = null;
+let lineageDragged = false;
+lineageViewport.addEventListener('pointerdown', (e) => {
+  if (!e.isPrimary || e.button !== 0 || !$('#lineage svg')) return;
+  lineageDragged = false;
+  lineageDrag = { id: e.pointerId, startX: e.clientX, startY: e.clientY, pan: { ...state.lineagePan } };
+});
+lineageViewport.addEventListener('pointermove', (e) => {
+  if (!lineageDrag || e.pointerId !== lineageDrag.id) return;
+  const dx = e.clientX - lineageDrag.startX; const dy = e.clientY - lineageDrag.startY;
+  if (!lineageDragged && Math.hypot(dx, dy) < 4) return;
+  if (!lineageDragged) {
+    lineageDragged = true;
+    lineageViewport.setPointerCapture(e.pointerId);
+    lineageViewport.classList.add('is-panning');
+    state.lineageAutoFit = false;
+  }
+  state.lineagePan = { x: lineageDrag.pan.x + dx, y: lineageDrag.pan.y + dy };
+  applyLineageZoom();
+});
+function endLineageDrag(e) {
+  if (!lineageDrag || e.pointerId !== lineageDrag.id) return;
+  lineageDrag = null;
+  lineageViewport.classList.remove('is-panning');
+  if (lineageViewport.hasPointerCapture(e.pointerId)) lineageViewport.releasePointerCapture(e.pointerId);
+}
+window.addEventListener('pointerup', endLineageDrag);
+for (const event of ['pointercancel', 'lostpointercapture']) lineageViewport.addEventListener(event, endLineageDrag);
+// A drag beginning on an object must not open its details when released.
+lineageViewport.addEventListener('click', (e) => {
+  if (lineageDragged && e.detail > 0) { e.preventDefault(); e.stopImmediatePropagation(); }
+}, true);
+lineageViewport.addEventListener('keydown', (e) => {
+  if (e.target !== lineageViewport || !$('#lineage svg')) return;
+  const delta = { ArrowLeft: [40, 0], ArrowRight: [-40, 0], ArrowUp: [0, 40], ArrowDown: [0, -40] }[e.key];
+  if (!delta) return;
+  e.preventDefault();
+  state.lineageAutoFit = false;
+  state.lineagePan.x += delta[0]; state.lineagePan.y += delta[1];
+  applyLineageZoom();
+});
+new ResizeObserver(() => {
+  if (state.lineageAutoFit && $('#lineage svg')) fitLineage();
+}).observe(lineageViewport);
 
 // ---------------------------------------------------------------- target architecture
 
@@ -227,18 +452,12 @@ function renderArchitecture() {
   const arch = state.audit.architecture;
   card.hidden = !arch;
   if (!arch) return;
-  const doms = arch[state.scope === 'all' ? 'all' : 'custom'];
+  const doms = arch[state.scope === 'all' ? 'all' : 'custom'].filter((d) => !state.domain || d.key === state.domain);
   $('#architecture-title').textContent = `Target architecture on ${arch.target.label}`;
   $('#architecture-sub').textContent = 'One proposal per domain: where each BW object lands on the target. Click a layer\'s objects to list them below.';
-  if (!doms.length) { $('#architecture-domains').innerHTML = ''; $('#architecture').innerHTML = '<p class="card-sub">No objects in scope.</p>'; return; }
-  if (!doms.some((d) => d.key === state.archDomain)) state.archDomain = doms[0].key;
-  $('#architecture-domains').innerHTML = doms.map((d) => `
-    <button type="button" role="tab" data-domain="${esc(d.key)}" aria-selected="${d.key === state.archDomain}" class="${d.special ? 'special' : ''}" title="${esc(d.special ? d.label : `${d.label} (${d.key})`)}">
-      ${esc(d.label)} <span class="count">${d.count}</span>
-    </button>`).join('');
-  $$('#architecture-domains button').forEach((b) => b.addEventListener('click', () => { state.archDomain = b.dataset.domain; renderArchitecture(); }));
-  const d = doms.find((x) => x.key === state.archDomain);
-  $('#architecture').innerHTML = `
+  if (!doms.length) { $('#architecture').innerHTML = '<p class="card-sub">No objects in this domain and scope.</p>'; return; }
+  $('#architecture').innerHTML = doms.map((d, i) => `
+    <article class="architecture-domain" data-architecture-domain="${i}">
     <div class="arch-head">
       <div>
         <h3>${esc(d.label)}${d.special ? '' : ` <span class="mono key">${esc(d.key)}</span>`}</h3>
@@ -266,13 +485,22 @@ function renderArchitecture() {
         </div>
       </li>`).join('')}
     </ol>
-    ${d.notes.length ? `<ul class="arch-notes">${d.notes.map((n) => `<li>${esc(n)}</li>`).join('')}</ul>` : ''}`;
+    ${d.notes.length ? `<ul class="arch-notes">${d.notes.map((n) => `<li>${esc(n)}</li>`).join('')}</ul>` : ''}
+    </article>`).join('');
+  const domainOf = (b) => doms[b.closest('[data-architecture-domain]').dataset.architectureDomain];
   $$('#architecture [data-layer-i]').forEach((b) => b.addEventListener('click', () => {
+    const d = domainOf(b);
     const l = d.layers[b.dataset.layerI];
     focusObjects(l.ids, `${d.label} · ${l.label}`);
   }));
-  $('#architecture [data-arch-list]').addEventListener('click', () => filterDomain(d.key));
-  $('#architecture [data-arch-ask]').addEventListener('click', () => askClaude(`Domain "${d.label}" (${d.special ? d.key : `top-level InfoArea ${d.key}`}, ${d.count} object(s)). The audit proposes this target architecture on ${arch.target.label}: ${d.container} ${d.layers.map((l) => `${l.label}: ${l.component} (${l.types.map((t) => `${t.count} ${t.type}`).join(', ')})`).join('; ')}. Check it against the objects of the domain in BW, challenge it, and propose the migration waves for this domain.`));
+  $$('#architecture [data-arch-list]').forEach((b) => b.addEventListener('click', () => {
+    const d = domainOf(b);
+    focusObjects(state.audit.objects.filter((o) => inScope(o) && (o.domain || '~unassigned') === d.key).map((o) => o.id), d.label);
+  }));
+  $$('#architecture [data-arch-ask]').forEach((b) => b.addEventListener('click', () => {
+    const d = domainOf(b);
+    askClaude(`Domain "${d.label}" (${d.special ? d.key : `top-level InfoArea ${d.key}`}, ${d.count} object(s)). The audit proposes this target architecture on ${arch.target.label}: ${d.container} ${d.layers.map((l) => `${l.label}: ${l.component} (${l.types.map((t) => `${t.count} ${t.type}`).join(', ')})`).join('; ')}. Check it against the objects of the domain in BW, challenge it, and propose the migration waves for this domain.`);
+  }));
 }
 
 function renderDistributionChart() {
@@ -345,9 +573,9 @@ function statusBadge(severity, label) {
 function renderFindings() {
   const byId = new Map(state.audit.objects.map((o) => [o.id, o]));
   const items = state.audit.findings.map((f) => {
-    const objs = f.objects.map((id) => byId.get(id)).filter((o) => o && inScope(o));
+    const objs = f.objects.map((id) => byId.get(id)).filter((o) => o && inSelection(o));
     return { ...f, inScope: objs };
-  }).filter((f) => f.inScope.length || f.objects.length === 0);
+  }).filter((f) => f.inScope.length || (!state.domain && f.objects.length === 0));
   $('#findings').innerHTML = items.length ? items.map((f, i) => `
     <li class="finding">
       ${statusBadge(f.severity)}
@@ -421,7 +649,7 @@ function decomEvidence(o) {
 }
 
 function decomCandidates() {
-  return state.audit.objects.filter((o) => o.difficulty && inScope(o) && isDecom(o))
+  return state.audit.objects.filter((o) => o.difficulty && inSelection(o) && isDecom(o))
     .sort((a, b) => domainLabel(a.domain).localeCompare(domainLabel(b.domain)) || a.type.localeCompare(b.type) || shortName(a).localeCompare(shortName(b)));
 }
 
@@ -469,7 +697,7 @@ function shortName(o) {
 }
 
 function focusObjects(ids, label) {
-  state.filters = { search: '', domain: '', category: '', type: '', min: 1, ids: new Set(ids), idsLabel: label };
+  state.filters = { search: '', category: '', type: '', min: 1, ids: new Set(ids), idsLabel: label };
   switchTab('objects');
   renderFilters();
   renderObjects();
@@ -478,15 +706,12 @@ function focusObjects(ids, label) {
 function scrollToTable() { $('.tabs').scrollIntoView({ behavior: 'smooth', block: 'start' }); }
 
 function renderFilters() {
-  const objs = state.audit.objects.filter((o) => o.difficulty && inScope(o));
+  const objs = state.audit.objects.filter((o) => o.difficulty && inSelection(o));
   const cats = state.audit.categories;
-  const doms = summary().byDomain || [];
-  $('#f-domain').hidden = !doms.length;
-  $('#f-domain').innerHTML = '<option value="">All domains</option>' + doms
-    .map((d) => `<option value="${esc(d.key)}"${state.filters.domain === d.key ? ' selected' : ''}>${esc(d.label)}${d.special ? '' : ` (${esc(d.key)})`}</option>`).join('');
   $('#f-category').innerHTML = '<option value="">All areas</option>' + Object.entries(cats)
     .map(([k, v]) => `<option value="${k}"${state.filters.category === k ? ' selected' : ''}>${esc(v.label)}</option>`).join('');
   const types = [...new Set(objs.map((o) => o.type))].sort();
+  if (!types.includes(state.filters.type)) state.filters.type = '';
   $('#f-type').innerHTML = '<option value="">All types</option>' + types
     .map((t) => `<option value="${t}"${state.filters.type === t ? ' selected' : ''}>${esc(TYPE_LABEL[t] || t)}</option>`).join('');
   $('#f-min').value = String(state.filters.min);
@@ -502,9 +727,8 @@ function difficultyCell(d) {
 function filteredObjects() {
   const f = state.filters;
   const q = f.search.trim().toLowerCase();
-  let list = state.audit.objects.filter((o) => o.difficulty && inScope(o));
+  let list = state.audit.objects.filter((o) => o.difficulty && inSelection(o));
   if (f.ids) list = list.filter((o) => f.ids.has(o.id));
-  if (f.domain) list = list.filter((o) => o.domain === f.domain);
   if (f.category) list = list.filter((o) => o.category === f.category);
   if (f.type) list = list.filter((o) => o.type === f.type);
   if (f.min > 1) list = list.filter((o) => o.difficulty >= f.min);
@@ -541,6 +765,7 @@ function renderObjects() {
     </tr>`;
     if (open) html += `<tr class="detail-row"><td colspan="${cols}">${objectDetail(o)}</td></tr>`;
   }
+  if (!list.length) html += `<tr><td colspan="${cols}">No objects match the selected domain, scope and table filters.</td></tr>`;
   html += '</tbody>';
   const table = $('#objects-table');
   table.innerHTML = html;
@@ -611,7 +836,8 @@ function objectDetail(o) {
 }
 
 function renderFlows() {
-  const flows = state.audit.flows.filter((f) => state.scope === 'all' || f.origin !== 'sap')
+  const transformations = new Set(state.audit.objects.filter((o) => o.type === 'TRFN' && inSelection(o)).map((o) => o.name));
+  const flows = state.audit.flows.filter((f) => inScope(f) && (!state.domain || transformations.has(f.transformation)))
     .sort((a, b) => b.difficulty - a.difficulty || a.target.name.localeCompare(b.target.name));
   $('#flows-table').innerHTML = `<thead><tr><th>Difficulty</th><th>Source</th><th>Target</th><th>Routines</th><th class="num">ABAP lines</th><th>DTPs</th><th>Status</th></tr></thead><tbody>${
     flows.map((f) => `<tr class="row" data-id="TRFN:${esc(f.transformation)}">
@@ -621,7 +847,7 @@ function renderFlows() {
       <td>${f.routines.length ? f.routines.map((r) => `<span class="flag">${esc(r)}</span>`).join('') : '–'}</td>
       <td class="num">${f.abapLines || '–'}</td>
       <td>${f.dtps.length ? f.dtps.map((d) => `<span class="flag" title="${esc(d.name)}">${esc(d.status)}</span>`).join('') : '–'}</td>
-      <td>${esc(f.status)}</td></tr>`).join('')}</tbody>`;
+      <td>${esc(f.status)}</td></tr>`).join('') || '<tr><td colspan="7">No data flows in this domain and scope.</td></tr>'}</tbody>`;
   $$('#flows-table tr.row').forEach((r) => r.addEventListener('click', () => { state.expanded.add(r.dataset.id); focusObjects([r.dataset.id], r.dataset.id.slice(5)); }));
 }
 
@@ -632,7 +858,7 @@ function chainStatus(run) {
 }
 
 function renderChains() {
-  const chains = state.audit.objects.filter((o) => o.type === 'RSPC' && inScope(o));
+  const chains = state.audit.objects.filter((o) => o.type === 'RSPC' && inSelection(o));
   $('#chains-table').innerHTML = `<thead><tr><th>Last run</th><th>Chain</th><th>Description</th><th>Started</th><th>Steps</th><th>Difficulty</th></tr></thead><tbody>${
     chains.map((c) => `<tr class="row" data-id="${esc(c.id)}">
       <td>${chainStatus(c.details.lastRun)}</td>
@@ -640,20 +866,33 @@ function renderChains() {
       <td>${esc(c.description)}</td>
       <td>${esc(c.details.lastRun?.lastStart || '–')}</td>
       <td>${(c.details.steps || []).map((s) => `<span class="flag">${esc(s.processType)}</span>`).join('')}</td>
-      <td>${difficultyCell(c.difficulty)}</td></tr>`).join('')}</tbody>`;
+      <td>${difficultyCell(c.difficulty)}</td></tr>`).join('') || '<tr><td colspan="6">No process chains in this domain and scope.</td></tr>'}</tbody>`;
   $$('#chains-table tr.row').forEach((r) => r.addEventListener('click', () => { state.expanded.add(r.dataset.id); focusObjects([r.dataset.id], r.dataset.id.slice(5)); }));
 }
 
 function renderSources() {
-  const src = state.audit.objects.filter((o) => o.type === 'LSYS');
+  const src = state.audit.objects.filter((o) => o.type === 'LSYS' && inSelection(o));
   $('#sources-table').innerHTML = `<thead><tr><th>Source system</th><th>Description</th><th>Type</th><th>Difficulty</th><th>Why</th></tr></thead><tbody>${
-    src.map((s) => `<tr><td class="mono">${esc(s.name)}</td><td>${esc(s.description)}</td><td class="mono">${esc(s.details.sourceSystemType)}</td><td>${difficultyCell(s.difficulty)}</td><td>${esc(s.reasons.join('; '))}</td></tr>`).join('')}</tbody>`;
+    src.map((s) => `<tr><td class="mono">${esc(s.name)}</td><td>${esc(s.description)}</td><td class="mono">${esc(s.details.sourceSystemType)}</td><td>${difficultyCell(s.difficulty)}</td><td>${esc(s.reasons.join('; '))}</td></tr>`).join('') || '<tr><td colspan="5">No source systems assigned to this domain and scope.</td></tr>'}</tbody>`;
 }
 
 function renderInventory() {
-  const inv = Object.entries(state.audit.inventory).sort((a, b) => b[1].total - a[1].total);
+  let inventory = state.audit.inventory;
+  if (state.domain) {
+    inventory = {};
+    for (const o of state.audit.objects.filter(inSelection)) {
+      const type = o.type === 'IOBJ' ? 'IOBJ_MD' : o.type;
+      const item = inventory[type] ||= { label: state.audit.inventory[type]?.label || TYPE_LABEL[o.type] || o.type,
+        total: 0, custom: 0, sap: 0, inactive: 0 };
+      item.total++;
+      item[o.origin === 'sap' ? 'sap' : 'custom']++;
+      if (o.status && o.status !== 'active') item.inactive++;
+    }
+  }
+  const inv = Object.entries(inventory).sort((a, b) => b[1].total - a[1].total);
   $('#inventory-table').innerHTML = `<thead><tr><th>Object type</th><th class="num">Total</th><th class="num">Customer</th><th class="num">SAP content</th><th class="num">Inactive</th></tr></thead><tbody>${
-    inv.map(([k, v]) => `<tr><td>${esc(v.label)} <span class="flag">${esc(k)}</span></td><td class="num">${fmt.format(v.total)}</td><td class="num">${fmt.format(v.custom)}</td><td class="num">${fmt.format(v.sap)}</td><td class="num">${fmt.format(v.inactive)}</td></tr>`).join('')}</tbody>`;
+    inv.map(([k, v]) => `<tr><td>${esc(v.label)} <span class="flag">${esc(k)}</span></td><td class="num">${fmt.format(v.total)}</td><td class="num">${fmt.format(v.custom)}</td><td class="num">${fmt.format(v.sap)}</td><td class="num">${fmt.format(v.inactive)}</td></tr>`).join('') || '<tr><td colspan="5">No audited objects in this domain and scope.</td></tr>'}</tbody>`;
+  $('#inventory-note').textContent = state.domain ? 'Domain counts cover audited objects with domain assignments. Object types counted only system-wide are not included.' : 'System-wide inventory, including SAP content.';
 }
 
 function switchTab(tab) {
@@ -929,7 +1168,6 @@ $$('.segmented button').forEach((b) => b.addEventListener('click', () => {
 }));
 $$('.tabs button').forEach((b) => b.addEventListener('click', () => switchTab(b.dataset.tab)));
 $('#f-search').addEventListener('input', (e) => { state.filters.search = e.target.value; renderObjects(); });
-$('#f-domain').addEventListener('change', (e) => { state.filters.domain = e.target.value; renderObjects(); });
 $('#f-category').addEventListener('change', (e) => { state.filters.category = e.target.value; renderObjects(); });
 $('#f-type').addEventListener('change', (e) => { state.filters.type = e.target.value; renderObjects(); });
 $('#f-min').addEventListener('change', (e) => { state.filters.min = Number(e.target.value); renderObjects(); });

@@ -22,6 +22,7 @@ const allowedOrigins = new Set([
 const STATIC = {
   '/': ['public/index.html', 'text/html; charset=utf-8'],
   '/app.js': ['public/app.js', 'text/javascript; charset=utf-8'],
+  '/lineage.js': ['public/lineage.js', 'text/javascript; charset=utf-8'],
   '/styles.css': ['public/styles.css', 'text/css; charset=utf-8'],
   '/teamwork-logo.png': ['public/teamwork-logo.png', 'image/png'],
   '/teamwork-initials-white.png': ['public/teamwork-initials-white.png', 'image/png'],

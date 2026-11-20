@@ -18,9 +18,10 @@
       <p class="toc-title">Audit Sections</p>
       <ul>
         <li><a href="#kpis" data-toc="kpis">Difficulty overview</a></li>
+        <li><a href="#domain-filter-card" data-toc="domain-filter-card">Domain filter</a></li>
         <li><a href="#architecture-card" data-toc="architecture-card">Target architecture</a></li>
         <li><a href="#decom-card" data-toc="decom-card">Decommission candidates</a></li>
-        <li><a href="#findings-card" data-toc="findings-card">Key findings</a></li>
+        <li><a href="#lineage-card" data-toc="lineage-card">Audited data flows</a></li>
         <li><a href="#details-card" data-toc="details-card">Details</a>
           <ul>
             <li><a href="#details-card" data-toc-tab="objects">Objects</a></li>
@@ -30,6 +31,7 @@
             <li><a href="#details-card" data-toc-tab="inventory">Inventory</a></li>
           </ul>
         </li>
+        <li><a href="#findings-card" data-toc="findings-card">Key findings</a></li>
       </ul>
       </nav>
 
@@ -75,7 +77,7 @@
         <section class="grid-2" id="charts">
           <article class="card">
             <h2>Average difficulty by domain</h2>
-            <p class="card-sub">Domains are the top-level InfoAreas. 1 = lift and shift, 5 = redesign. Click a domain to list its objects.</p>
+            <p class="card-sub">Domains are the top-level InfoAreas. 1 = lift and shift, 5 = redesign. Click a domain to filter the sections below.</p>
             <div id="chart-domains" class="chart"></div>
           </article>
           <article class="card">
@@ -85,10 +87,13 @@
           </article>
         </section>
 
+        <section id="domain-filter-card" aria-label="Domain filter">
+          <div class="domain-picker" id="global-domains" role="group" aria-label="Global domain filter"></div>
+        </section>
+
         <section class="card" id="architecture-card" hidden>
           <h2 id="architecture-title">Target architecture</h2>
           <p class="card-sub" id="architecture-sub"></p>
-          <div class="domain-picker" id="architecture-domains" role="tablist" aria-label="Domain"></div>
           <div id="architecture"></div>
         </section>
 
@@ -107,9 +112,20 @@
           <p class="table-note" id="decom-note"></p>
         </section>
 
-        <section class="card" id="findings-card">
-          <h2>Key findings</h2>
-          <ul class="findings" id="findings"></ul>
+        <section class="card" id="lineage-card" aria-labelledby="lineage-title">
+          <h2 id="lineage-title">Audited data flows</h2>
+          <p class="card-sub">Read from bottom to top: DataSources → transformations → aDSOs and providers → BW queries. Click an audited object to inspect it below.</p>
+          <div class="lineage-toolbar">
+            <p class="card-sub" id="lineage-summary" aria-live="polite"></p>
+            <div class="card-actions" role="group" aria-label="Data flow view controls">
+              <button type="button" class="btn small" id="lineage-zoom-out" aria-label="Zoom out">−</button>
+              <button type="button" class="btn small" id="lineage-zoom-reset" aria-label="Fit all domain objects" title="Fit all domain objects">Fit</button>
+              <button type="button" class="btn small" id="lineage-zoom-in" aria-label="Zoom in">+</button>
+              <button type="button" class="btn small" id="lineage-fullscreen" aria-label="Enter fullscreen" aria-pressed="false" title="Enter fullscreen">Fullscreen</button>
+            </div>
+          </div>
+          <div class="lineage-viewport" id="lineage" role="region" aria-label="Vertical BW data flows" tabindex="0"></div>
+          <p class="table-note" id="lineage-note"></p>
         </section>
 
         <section class="card" id="details-card">
@@ -124,7 +140,6 @@
           <div class="tab-panel" data-panel="objects">
             <div class="filters">
               <input type="search" id="f-search" placeholder="Search name or description" aria-label="Search">
-              <select id="f-domain" aria-label="Domain"><option value="">All domains</option></select>
               <select id="f-category" aria-label="Area"><option value="">All areas</option></select>
               <select id="f-type" aria-label="Type"><option value="">All types</option></select>
               <select id="f-min" aria-label="Minimum difficulty">
@@ -140,7 +155,15 @@
           <div class="tab-panel" data-panel="flows" hidden><div class="table-wrap"><table class="data" id="flows-table"></table></div></div>
           <div class="tab-panel" data-panel="chains" hidden><div class="table-wrap"><table class="data" id="chains-table"></table></div></div>
           <div class="tab-panel" data-panel="sources" hidden><div class="table-wrap"><table class="data" id="sources-table"></table></div></div>
-          <div class="tab-panel" data-panel="inventory" hidden><div class="table-wrap"><table class="data" id="inventory-table"></table></div></div>
+          <div class="tab-panel" data-panel="inventory" hidden>
+            <div class="table-wrap"><table class="data" id="inventory-table"></table></div>
+            <p class="table-note" id="inventory-note"></p>
+          </div>
+        </section>
+
+        <section class="card" id="findings-card">
+          <h2>Key findings</h2>
+          <ul class="findings" id="findings"></ul>
         </section>
 
         <p class="footnote" id="footnote"></p>
