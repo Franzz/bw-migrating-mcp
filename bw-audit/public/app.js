@@ -270,7 +270,7 @@ function renderLineage() {
   const unlinked = graph.nodes.filter((n) => !connected.has(n.id)).length;
   const feedback = graph.edges.some((e) => e.feedback);
   $('#lineage-note').textContent = graph.nodes.length
-    ? `Arrows show recorded dependencies. Click and drag to move around; use + and − to zoom, or Fit to show all objects. Dashed boxes are upstream references.${unlinked ? ` ${unlinked} object(s) have no recorded connections in this snapshot.` : ''}${feedback ? ' Dashed arrows indicate cyclic dependencies.' : ''}`
+    ? `Arrows show recorded dependencies. Migration difficulty runs from 1 (trivial) to 5 (redesign). Click and drag to move around; use + and − to zoom, or Fit to show all objects. Dashed boxes are upstream references.${unlinked ? ` ${unlinked} object(s) have no recorded connections in this snapshot.` : ''}${feedback ? ' Dashed arrows indicate cyclic dependencies.' : ''}`
     : 'No DataSources, transformations, providers or BW queries recorded for this domain in the selected scope.';
   const el = $('#lineage');
   el.innerHTML = graph.nodes.length ? `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${graph.width} ${graph.height}" data-width="${graph.width}" data-height="${graph.height}" role="group" aria-label="${esc(label)} data flows, flowing upward">
@@ -278,7 +278,9 @@ function renderLineage() {
     <g class="lineage-edges">${graph.edges.map((e) => `<path class="lineage-edge${e.feedback ? ' feedback' : ''}" d="${e.path}" marker-end="url(#lineage-arrow)"/>`).join('')}</g>
     ${graph.nodes.map((n, i) => {
       const type = LINEAGE_LABEL[n.type] || n.type;
-      const title = `${type}: ${n.name}${n.description ? ` — ${n.description}` : ''}${n.sourceSystem ? ` · ${n.sourceSystem}` : ''}${n.context ? ` · upstream reference${n.domain ? ` (${domainLabel(n.domain)})` : ''}` : ''}`;
+      const difficulty = Number.isInteger(n.difficulty) && n.difficulty >= 1 && n.difficulty <= 5 ? n.difficulty : null;
+      const difficultyLabel = difficulty ? `${difficulty}/5 · ${state.audit.levels[difficulty]}` : 'Not scored';
+      const title = `${type}: ${n.name}${n.description ? ` — ${n.description}` : ''}${n.sourceSystem ? ` · ${n.sourceSystem}` : ''}${n.context ? ` · upstream reference${n.domain ? ` (${domainLabel(n.domain)})` : ''}` : ''} · Migration difficulty: ${difficultyLabel}`;
       return `<g class="lineage-node ${lineageKind(n)}${n.context ? ' context' : ''}${n.inspectable ? ' inspectable' : ''}" transform="translate(${n.x},${n.y})"${n.inspectable ? ` role="button" tabindex="0" data-node="${i}" aria-label="${esc(`Inspect ${title}`)}"` : ''}>
         <title>${esc(title)}</title>
         <rect class="lineage-box" width="${n.width}" height="${n.height}" rx="9"/>
@@ -286,6 +288,10 @@ function renderLineage() {
         <text class="lineage-type" x="14" y="19">${esc(type)}${n.context ? ' · reference' : ''}</text>
         <text class="lineage-name" x="14" y="39">${esc(clip(n.name, 25))}</text>
         <text class="lineage-description" x="14" y="59">${esc(clip(n.sourceSystem || n.description || (n.details?.flow ? `${n.details.flow.source.name} → ${n.details.flow.target.name}` : 'No description'), 30))}</text>
+        <g class="lineage-difficulty"${difficulty ? ` style="--dc: var(--d${difficulty})"` : ''}>
+          ${difficulty ? [1, 2, 3, 4, 5].map((level) => `<rect class="lineage-difficulty-step${level <= difficulty ? ' on' : ''}" x="${14 + (level - 1) * 10}" y="73" width="8" height="8" rx="2" aria-hidden="true"/>`).join('') : ''}
+          <text x="${difficulty ? 72 : 14}" y="81">${esc(difficultyLabel)}</text>
+        </g>
       </g>`;
     }).join('')}
   </svg>` : '<p class="lineage-empty">No flow objects in this domain.</p>';
@@ -699,7 +705,13 @@ function shortName(o) {
 }
 
 function focusObjects(ids, label) {
-  state.filters = { search: '', category: '', type: '', min: 1, ids: new Set(ids), idsLabel: label };
+  const selectedIds = new Set(ids);
+  const selected = state.audit.objects.filter((o) => selectedIds.has(o.id));
+  const object = selected.length === 1 ? selected[0] : null;
+  state.filters = {
+    search: object?.name || '', category: '', type: object?.type || 'selection', min: 1,
+    ids: object ? null : selectedIds, idsLabel: object ? '' : label,
+  };
   switchTab('objects');
   renderFilters();
   renderObjects();
@@ -713,8 +725,9 @@ function renderFilters() {
   $('#f-category').innerHTML = '<option value="">All areas</option>' + Object.entries(cats)
     .map(([k, v]) => `<option value="${k}"${state.filters.category === k ? ' selected' : ''}>${esc(v.label)}</option>`).join('');
   const types = [...new Set(objs.map((o) => o.type))].sort();
-  if (!types.includes(state.filters.type)) state.filters.type = '';
-  $('#f-type').innerHTML = '<option value="">All types</option>' + types
+  if (!types.includes(state.filters.type) && !(state.filters.type === 'selection' && state.filters.ids)) state.filters.type = '';
+  $('#f-type').innerHTML = '<option value="">All types</option>' +
+    (state.filters.ids ? `<option value="selection"${state.filters.type === 'selection' ? ' selected' : ''}>${esc(state.filters.idsLabel)} (${fmt.format(state.filters.ids.size)} objects)</option>` : '') + types
     .map((t) => `<option value="${t}"${state.filters.type === t ? ' selected' : ''}>${esc(TYPE_LABEL[t] || t)}</option>`).join('');
   $('#f-min').value = String(state.filters.min);
   $('#f-search').value = state.filters.search;
@@ -730,9 +743,9 @@ function filteredObjects() {
   const f = state.filters;
   const q = f.search.trim().toLowerCase();
   let list = state.audit.objects.filter((o) => o.difficulty && inSelection(o));
-  if (f.ids) list = list.filter((o) => f.ids.has(o.id));
   if (f.category) list = list.filter((o) => o.category === f.category);
-  if (f.type) list = list.filter((o) => o.type === f.type);
+  if (f.type === 'selection') list = list.filter((o) => f.ids?.has(o.id));
+  else if (f.type) list = list.filter((o) => o.type === f.type);
   if (f.min > 1) list = list.filter((o) => o.difficulty >= f.min);
   if (q) list = list.filter((o) => `${o.name} ${o.description} ${shortName(o)}`.toLowerCase().includes(q));
   const { key, dir } = state.sort;
@@ -748,6 +761,7 @@ function filteredObjects() {
 const OBJECT_LIMIT = 300;
 function renderObjects() {
   const list = filteredObjects();
+  $('#f-search-clear').hidden = !state.filters.search;
   const cats = state.audit.categories;
   const showOrigin = state.scope === 'all';
   const th = (key, label) => `<th class="sortable" data-sort="${key}" aria-sort="${state.sort.key === key ? (state.sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}">${label}</th>`;
@@ -771,8 +785,7 @@ function renderObjects() {
   html += '</tbody>';
   const table = $('#objects-table');
   table.innerHTML = html;
-  $('#objects-note').innerHTML = `${fmt.format(list.length)} object(s)${list.length > OBJECT_LIMIT ? `, showing the first ${OBJECT_LIMIT}` : ''}${state.filters.ids ? ` · filtered on <strong>${esc(state.filters.idsLabel)}</strong> <button class="chip" id="clear-ids">clear</button>` : ''}. Click a row for the reasons behind its score.`;
-  $('#clear-ids')?.addEventListener('click', () => { state.filters.ids = null; renderObjects(); });
+  $('#objects-note').textContent = `${fmt.format(list.length)} object(s)${list.length > OBJECT_LIMIT ? `, showing the first ${OBJECT_LIMIT}` : ''}. Click a row for the reasons behind its score.`;
   $$('th[data-sort]', table).forEach((h) => h.addEventListener('click', () => {
     const key = h.dataset.sort;
     state.sort = { key, dir: state.sort.key === key && state.sort.dir === 'desc' ? 'asc' : 'desc' };
@@ -1170,8 +1183,22 @@ $$('.segmented button').forEach((b) => b.addEventListener('click', () => {
 }));
 $$('.tabs button').forEach((b) => b.addEventListener('click', () => switchTab(b.dataset.tab)));
 $('#f-search').addEventListener('input', (e) => { state.filters.search = e.target.value; renderObjects(); });
+$('#f-search-clear').addEventListener('click', () => {
+  state.filters.search = '';
+  $('#f-search').value = '';
+  renderObjects();
+  $('#f-search').focus();
+});
 $('#f-category').addEventListener('change', (e) => { state.filters.category = e.target.value; renderObjects(); });
-$('#f-type').addEventListener('change', (e) => { state.filters.type = e.target.value; renderObjects(); });
+$('#f-type').addEventListener('change', (e) => {
+  state.filters.type = e.target.value;
+  if (state.filters.type !== 'selection') {
+    state.filters.ids = null;
+    state.filters.idsLabel = '';
+  }
+  renderFilters();
+  renderObjects();
+});
 $('#f-min').addEventListener('change', (e) => { state.filters.min = Number(e.target.value); renderObjects(); });
 $('#run-audit').addEventListener('click', runAudit);
 let resizeTimer;

@@ -245,6 +245,9 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .lineage-type { fill: var(--text-2); font: 11px var(--font-body); }
 .lineage-name { fill: var(--text); font: 600 12px ui-monospace, "Cascadia Code", Consolas, monospace; }
 .lineage-description { fill: var(--text-3); font: 11px var(--font-body); }
+.lineage-difficulty text { fill: var(--text-2); font: 600 11px var(--font-body); }
+.lineage-difficulty-step { fill: var(--track); }
+.lineage-difficulty-step.on { fill: var(--dc); }
 .lineage-empty { padding: 30px 16px; text-align: center; color: var(--text-3); }
 
 /* Decommission candidates */
@@ -285,7 +288,12 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .tabs button[aria-selected="true"] { color: var(--accent-text); border-bottom-color: var(--tw-blue); }
 .filters { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
 .filters input, .filters select { border: 1px solid var(--border); background: var(--surface); border-radius: 8px; padding: 6px 10px; min-width: 0; }
-.filters input { flex: 1 1 220px; }
+.filter-search { position: relative; flex: 1 1 220px; min-width: 0; }
+.filter-search input { width: 100%; padding-right: 36px; }
+.filter-search input::-webkit-search-cancel-button { -webkit-appearance: none; }
+.search-clear { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 4px; background: none; color: var(--text-2); font-size: 20px; line-height: 1; cursor: pointer; }
+.search-clear:hover { background: var(--surface-2); color: var(--accent-text); }
+.search-clear:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .table-wrap { overflow-x: auto; border-radius: 8px; border: 1px solid var(--border); }
 table.data { border-collapse: collapse; width: 100%; font-size: 13px; }
 table.data th { background: var(--th-bg); color: var(--th-text); text-align: left; font-weight: 600; padding: 8px 10px; white-space: nowrap; position: sticky; top: 0; }

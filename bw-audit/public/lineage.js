@@ -77,7 +77,7 @@ export function buildLineage(objects, { domain, includeSap = false, flows = [] }
 
 /** Layer the graph upward; break cycles for layout while preserving their edges. */
 export function layoutLineage(graph) {
-  const boxWidth = 216; const boxHeight = 76; const columnGap = 30; const rowGap = 52; const padding = 28;
+  const boxWidth = 216; const boxHeight = 96; const columnGap = 30; const rowGap = 52; const padding = 28;
   if (!graph.nodes.length) return { ...graph, width: 0, height: 0 };
   const nodes = graph.nodes.map((n) => ({ ...n, rank: SOURCES.has(n.type) ? 0 : 1 }));
   const byId = new Map(nodes.map((n) => [n.id, n]));

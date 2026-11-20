@@ -19,9 +19,9 @@
       <ul>
         <li><a href="#kpis" data-toc="kpis">Difficulty overview</a></li>
         <li><a href="#domain-filter-card" data-toc="domain-filter-card">Domain filter</a></li>
+        <li><a href="#lineage-card" data-toc="lineage-card">Audited data flows</a></li>
         <li><a href="#architecture-card" data-toc="architecture-card">Target architecture</a></li>
         <li><a href="#decom-card" data-toc="decom-card">Decommission candidates</a></li>
-        <li><a href="#lineage-card" data-toc="lineage-card">Audited data flows</a></li>
         <li><a href="#details-card" data-toc="details-card">Details</a>
           <ul>
             <li><a href="#details-card" data-toc-tab="objects">Objects</a></li>
@@ -92,6 +92,22 @@
           <div class="domain-picker" id="global-domains" role="group" aria-label="Global domain filter"></div>
         </section>
 
+        <section class="card" id="lineage-card" aria-labelledby="lineage-title">
+          <h2 id="lineage-title">Audited data flows</h2>
+          <p class="card-sub">Read from bottom to top: DataSources → transformations → aDSOs and providers → BW queries. Click an audited object to inspect it below.</p>
+          <div class="lineage-toolbar">
+            <p class="card-sub" id="lineage-summary" aria-live="polite"></p>
+            <div class="card-actions" role="group" aria-label="Data flow view controls">
+              <button type="button" class="btn small" id="lineage-zoom-out" aria-label="Zoom out">−</button>
+              <button type="button" class="btn small" id="lineage-zoom-reset" aria-label="Fit all domain objects" title="Fit all domain objects">Fit</button>
+              <button type="button" class="btn small" id="lineage-zoom-in" aria-label="Zoom in">+</button>
+              <button type="button" class="btn small" id="lineage-fullscreen" aria-label="Enter fullscreen" aria-pressed="false" title="Enter fullscreen">Fullscreen</button>
+            </div>
+          </div>
+          <div class="lineage-viewport" id="lineage" role="region" aria-label="Vertical BW data flows" tabindex="0"></div>
+          <p class="table-note" id="lineage-note"></p>
+        </section>
+
         <section class="card" id="architecture-card" hidden>
           <h2 id="architecture-title">Target architecture</h2>
           <p class="card-sub" id="architecture-sub"></p>
@@ -113,22 +129,6 @@
           <p class="table-note" id="decom-note"></p>
         </section>
 
-        <section class="card" id="lineage-card" aria-labelledby="lineage-title">
-          <h2 id="lineage-title">Audited data flows</h2>
-          <p class="card-sub">Read from bottom to top: DataSources → transformations → aDSOs and providers → BW queries. Click an audited object to inspect it below.</p>
-          <div class="lineage-toolbar">
-            <p class="card-sub" id="lineage-summary" aria-live="polite"></p>
-            <div class="card-actions" role="group" aria-label="Data flow view controls">
-              <button type="button" class="btn small" id="lineage-zoom-out" aria-label="Zoom out">−</button>
-              <button type="button" class="btn small" id="lineage-zoom-reset" aria-label="Fit all domain objects" title="Fit all domain objects">Fit</button>
-              <button type="button" class="btn small" id="lineage-zoom-in" aria-label="Zoom in">+</button>
-              <button type="button" class="btn small" id="lineage-fullscreen" aria-label="Enter fullscreen" aria-pressed="false" title="Enter fullscreen">Fullscreen</button>
-            </div>
-          </div>
-          <div class="lineage-viewport" id="lineage" role="region" aria-label="Vertical BW data flows" tabindex="0"></div>
-          <p class="table-note" id="lineage-note"></p>
-        </section>
-
         <section class="card" id="details-card">
           <div class="tabs" role="tablist">
             <button role="tab" aria-selected="true" data-tab="objects">Objects</button>
@@ -140,7 +140,10 @@
 
           <div class="tab-panel" data-panel="objects">
             <div class="filters">
-              <input type="search" id="f-search" placeholder="Search name or description" aria-label="Search">
+              <div class="filter-search">
+                <input type="search" id="f-search" placeholder="Search name or description" aria-label="Search">
+                <button type="button" class="search-clear" id="f-search-clear" aria-label="Clear search" title="Clear search" hidden>×</button>
+              </div>
               <select id="f-category" aria-label="Area"><option value="">All areas</option></select>
               <select id="f-type" aria-label="Type"><option value="">All types</option></select>
               <select id="f-min" aria-label="Minimum difficulty">
