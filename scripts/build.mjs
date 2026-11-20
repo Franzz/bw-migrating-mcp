@@ -177,6 +177,7 @@ const SOURCES = [
     setup: async ({ current, bwPatch }) => {
       buildBwServer();
       run(root, 'npm', ['--prefix', 'bw-audit', 'install']);
+      run(root, 'npm', ['--prefix', 'modeling', 'install']);
       await patchBwApi({ apply: bwPatch });
       return {
         'bw-mcp': {

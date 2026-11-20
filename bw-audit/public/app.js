@@ -115,13 +115,15 @@ function render() {
   const a = state.audit;
   $('#empty').hidden = Boolean(a);
   $('#content').hidden = !a;
+  $('#audit-line').hidden = !a;
   updateToc();
   if (!a) return;
   const sys = a.system;
   $('#system-line').textContent = [
     sys.logicalSystem, sys.platform, sys.software,
-    sys.database, `audited ${new Date(a.generatedAt).toLocaleString()}`, `target ${a.target?.label || 'Generic platform'}`,
+    sys.database,
   ].filter(Boolean).join(' · ');
+  $('#audit-line').textContent = `audited ${new Date(a.generatedAt).toLocaleString()} · targeting ${a.target?.label || 'Generic platform'}`;
   renderKpis();
   renderDomainChart();
   renderDistributionChart();

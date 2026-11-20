@@ -15,7 +15,7 @@ Access is read-only, and the server certificate is checked against the BW root C
 
    | Question | Choices | MCP server |
    |---|---|---|
-   | Migration source | SAP BW | `bw-mcp`: the build clones the `bw-migration` branch of [Franzz/bw-modeling-mcp](https://github.com/Franzz/bw-modeling-mcp) into `modeling-mcp/bw` (or updates that checkout), then installs and builds it; also installs the audit app dependencies with `npm --prefix bw-audit install`, and checks the [BW API patch](bw-api-patch/README.md) in the BW system (step 4) |
+   | Migration source | SAP BW | `bw-mcp`: the build clones the `bw-migration` branch of [Franzz/bw-modeling-mcp](https://github.com/Franzz/bw-modeling-mcp) into `modeling-mcp/bw` (or updates that checkout), then installs and builds it; also installs the audit and modeling app dependencies (`npm --prefix bw-audit install`, `npm --prefix modeling install`), and checks the [BW API patch](bw-api-patch/README.md) in the BW system (step 4) |
    | Migration target | Microsoft Fabric | `fabric-mcp`: Microsoft's official Fabric MCP server. The build clones the `main` branch of [Franzz/fabric-modeling-mcp](https://github.com/Franzz/fabric-modeling-mcp) into `modeling-mcp/fabric` (or updates that checkout), then runs its own build, which installs the server and sets up the Microsoft sign-in (the Azure CLI in `modeling-mcp/fabric/.venv`, or VS Code's sign-in on Windows), see [modeling-mcp/fabric/README.md](modeling-mcp/fabric/README.md) |
    | Migration target | SAP Datasphere | `datasphere-mcp`: fetches [datasphere-modeling-mcp](https://github.com/Franzz/datasphere-modeling-mcp) into `modeling-mcp/datasphere` and runs its build, which installs SAP's official Datasphere CLI and the custom modeling MCP. Configure the tenant and OAuth sign-in as described in [modeling-mcp/datasphere/README.md](modeling-mcp/datasphere/README.md). |
    | Migration target | Snowflake + dbt | `snowflake-dbt-mcp`: the independent repo in `modeling-mcp/snowflake-dbt`. Its build uses uv/Python 3.12 to install dbt Core, the Snowflake adapter and the custom MCP into a local `.venv`. Maps BW storage to Snowflake and transformations to dbt. See [modeling-mcp/snowflake-dbt/README.md](modeling-mcp/snowflake-dbt/README.md). |
@@ -53,6 +53,13 @@ Access is read-only, and the server certificate is checked against the BW root C
    Run this from the project root, then restart the Codex extension to load the
    server. `.mcp.json` alone does not configure Codex. See the
    [Codex MCP setup guide](https://developers.openai.com/codex/mcp).
+
+## Apps
+
+| App | Start | What it does |
+|---|---|---|
+| [BW audit](bw-audit/README.md) | `npm run bw-audit-start`, http://localhost:5180 | Reads the BW system and scores how hard each object is to migrate. Writes `bw-audit/data/`. |
+| [BW modeling](modeling/README.md) | `npm run modeling-start`, http://localhost:5181 | After the audit: converts the BW data models in scope into a technology-agnostic dbt project in `modeling/data/<project>/`, and checks it. |
 
 ## Options
 

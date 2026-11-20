@@ -120,6 +120,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
   :root:not([data-theme="light"]) .brand-logo img { box-sizing: content-box; height: 32px; }
 }
 .subtitle { margin: 4px 0 0; color: var(--subtitle); font-weight: 600; }
+.sub-subtitle { margin: 2px 0 0; color: var(--text-2); font-size: 12px; font-weight: 400; }
 .actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 
 .btn { border: 1px solid var(--border); background: var(--surface); border-radius: 8px; padding: 7px 14px; cursor: pointer; font-weight: 600; }
